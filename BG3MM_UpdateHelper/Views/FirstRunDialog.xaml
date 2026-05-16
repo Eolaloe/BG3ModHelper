@@ -1,0 +1,157 @@
+<Window x:Class="BG3MM_UpdateHelper.Views.FirstRunDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BG3MM UpdateHelper — Initial Setup"
+        Height="600" Width="620"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- 타이틀 -->
+            <RowDefinition Height="Auto"/>  <!-- Step 1: BG3MM 경로 -->
+            <RowDefinition Height="Auto"/>  <!-- Step 2: API 키 -->
+            <RowDefinition Height="Auto"/>  <!-- Step 3: Nexus 로그인 -->
+            <RowDefinition Height="*"/>     <!-- 여백 -->
+            <RowDefinition Height="Auto"/>  <!-- 하단 버튼 -->
+        </Grid.RowDefinitions>
+
+        <!-- 타이틀 -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Welcome to BG3MM UpdateHelper"
+                       FontSize="16" FontWeight="Bold" Margin="0,0,0,6"/>
+            <TextBlock Text="Complete the setup below to get started. At least one API key is required."
+                       Foreground="#666666" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Step 1: BG3MM 경로 -->
+        <GroupBox Grid.Row="1" Margin="0,0,0,10">
+            <GroupBox.Header>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Step 1 · " FontWeight="SemiBold"/>
+                    <TextBlock Text="BG3MM Folder" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="BG3MMBadge" Text=" ⚠ Required"
+                               Foreground="#cc4400" FontSize="11" Margin="6,0,0,0"/>
+                </StackPanel>
+            </GroupBox.Header>
+            <StackPanel Margin="8">
+                <TextBlock Text="Select the folder containing BG3ModManager.exe"
+                           Foreground="#666666" Margin="0,0,0,6"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" x:Name="BG3MMPathBox" IsReadOnly="True"
+                             Padding="4" VerticalContentAlignment="Center"
+                             TextChanged="OnInputChanged"/>
+                    <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0" Padding="12,4"
+                            Click="BrowseBG3MM_Click"/>
+                </Grid>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Step 2: API 키 -->
+        <GroupBox Grid.Row="2" Margin="0,0,0,10">
+            <GroupBox.Header>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Step 2 · " FontWeight="SemiBold"/>
+                    <TextBlock Text="API Keys" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="ApiKeyBadge" Text=" ⚠ At least one required"
+                               Foreground="#cc4400" FontSize="11" Margin="6,0,0,0"/>
+                </StackPanel>
+            </GroupBox.Header>
+            <StackPanel Margin="8">
+
+                <!-- Nexus API 키 -->
+                <TextBlock Text="Nexus Mods API Key" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" x:Name="NexusKeyBox" Padding="4"
+                             TextChanged="OnInputChanged"/>
+                    <Button Grid.Column="1" Content="Get Key" Margin="6,0,0,0" Padding="10,4"
+                            Click="OpenNexusKeyPage_Click"/>
+                </Grid>
+
+                <!-- mod.io API 키 -->
+                <TextBlock Text="mod.io API Key" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" x:Name="ModioKeyBox" Padding="4"
+                             TextChanged="OnInputChanged"/>
+                    <Button Grid.Column="1" Content="Get Key" Margin="6,0,0,0" Padding="10,4"
+                            Click="OpenModioKeyPage_Click"/>
+                </Grid>
+
+                <TextBlock x:Name="ApiKeyHint"
+                           Text="⚠ Without API keys, update checking is not available."
+                           Foreground="#cc4400" FontSize="11" Margin="0,8,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Step 3: Nexus 계정 연동 -->
+        <GroupBox Grid.Row="3">
+            <GroupBox.Header>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Step 3 · " FontWeight="SemiBold"/>
+                    <TextBlock Text="Nexus Account" FontWeight="SemiBold"/>
+                    <TextBlock Text=" (Strongly recommended)"
+                               Foreground="#888888" FontSize="11" Margin="6,0,0,0"/>
+                </StackPanel>
+            </GroupBox.Header>
+            <StackPanel Margin="8">
+                <TextBlock TextWrapping="Wrap" Foreground="#444444" Margin="0,0,0,8">
+                    <Run Text="Linking your Nexus account enables automatic mod matching and contributes to the community UUID database."/>
+                    <LineBreak/>
+                    <Run Text="Without this, Nexus-only mods require manual URL input." Foreground="#888888"/>
+                </TextBlock>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" x:Name="NexusLoginButton"
+                            Content="Link Nexus Account"
+                            Padding="14,6" FontWeight="SemiBold"
+                            Background="#d98200" Foreground="White"
+                            BorderThickness="0"
+                            Click="NexusLogin_Click"/>
+
+                    <TextBlock Grid.Column="1" x:Name="NexusLoginStatus"
+                               Text="Not linked"
+                               Foreground="#888888" FontSize="12"
+                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+
+                    <Button Grid.Column="2" x:Name="SkipNexusButton"
+                            Content="Skip for now"
+                            Foreground="#888888" Background="Transparent"
+                            BorderThickness="0" Padding="8,6"
+                            Click="SkipNexus_Click"/>
+                </Grid>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- 하단 버튼 -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="StartButton"
+                    Content="Get Started"
+                    Width="130" Height="34" Margin="0,0,8,0"
+                    FontSize="13" FontWeight="SemiBold"
+                    IsDefault="True" IsEnabled="False"
+                    Click="Start_Click"/>
+            <Button Content="Cancel" Width="100" Height="34"
+                    IsCancel="True" Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

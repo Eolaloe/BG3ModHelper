@@ -1,0 +1,118 @@
+<Window x:Class="BG3MM_UpdateHelper.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BG3MM_UpdateHelper"
+        Height="500" Width="500"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Info panel -->
+            <RowDefinition Height="Auto"/>  <!-- Action buttons -->
+            <RowDefinition Height="Auto"/>  <!-- Progress area -->
+            <RowDefinition Height="*"/>     <!-- Recent activity -->
+            <RowDefinition Height="Auto"/>  <!-- Bottom buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- Info panel -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="BG3MM folder:" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding BG3MMFolderPath}"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" Content="Change..." Padding="8,2"
+                        Command="{Binding ChangeBG3MMFolderCommand}"/>
+            </Grid>
+
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Mods folder:" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding ModsFolderDisplay}"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+            </Grid>
+
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Installed mods:" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding InstalledModsCountDisplay}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <Grid Margin="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding LastCheckDisplay}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Action buttons -->
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="Check for Updates"
+                    Height="44" FontSize="14"
+                    Command="{Binding CheckUpdatesCommand}"/>
+            <Button Grid.Column="2" Content="Launch BG3MM"
+                    Height="44" FontSize="14"
+                    Command="{Binding LaunchBG3MMCommand}"/>
+        </Grid>
+
+        <!-- Progress area -->
+        <Grid Grid.Row="2" Margin="0,0,0,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0"
+                       Text="{Binding StatusText}"
+                       Foreground="#555555"
+                       FontSize="11"
+                       Margin="0,0,0,3"/>
+            <ProgressBar Grid.Row="1"
+                         Height="6"
+                         Minimum="0"
+                         Maximum="{Binding ProgressMax, Mode=OneWay}"
+                         Value="{Binding ProgressValue, Mode=OneWay}"
+                         IsIndeterminate="{Binding ProgressIsIndeterminate, Mode=OneWay}"/>
+        </Grid>
+
+        <!-- Recent activity -->
+        <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" Padding="8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Recent Activity" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ListBox Grid.Row="1" ItemsSource="{Binding RecentActivities}"
+                         BorderThickness="0" Background="Transparent"/>
+            </Grid>
+        </Border>
+
+        <!-- Bottom buttons -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Settings" Padding="16,4" Margin="0,0,8,0"
+                    Command="{Binding OpenSettingsCommand}"/>
+            <Button Content="Help" Padding="16,4"
+                    Command="{Binding OpenHelpCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>
