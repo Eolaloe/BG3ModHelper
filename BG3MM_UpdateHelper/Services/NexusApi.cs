@@ -36,11 +36,20 @@ public class NexusApi
         _apiKey = apiKey;
     }
 
-    /// <summary>True when the key is set and rate limits allow further calls.</summary>
+    /// <summary>
+    /// 동일 API key를 가진 새 인스턴스 반환. rate limit 카운터는 초기값(100/2500)으로 리셋.
+    /// 다운로드 직전에 호출하면 CheckUpdates에서 소진된 rate limit의 영향을 받지 않음.
+    /// </summary>
+    public NexusApi Clone() => new NexusApi(_apiKey);
+
+    /// <summary>
+    /// True when the API key is set.
+    /// Rate limit은 서버(Nexus)가 직접 관리 — 앱이 내부 카운터로 선제 차단하면
+    /// 서버는 아직 허용하는데 다운로드가 막히는 역효과 발생.
+    /// 서버가 한도 초과 시 429를 반환하면 GetAsync에서 null로 처리.
+    /// </summary>
     public bool CanMakeRequest() =>
-        !string.IsNullOrWhiteSpace(_apiKey) &&
-        HourlyRemaining > 5 &&
-        DailyRemaining  > 5;
+        !string.IsNullOrWhiteSpace(_apiKey);
 
     // ── Public API ────────────────────────────────────────────────────────
 
@@ -119,11 +128,11 @@ public class NexusApi
             var candidates = files
                 .Select(f => new NexusModFile
                 {
-                    FileId        = f["file_id"]?.Value<long>() ?? 0,
-                    Name          = f["name"]?.Value<string>() ?? "",
-                    Version       = f["version"]?.Value<string>() ?? "",
-                    CategoryName  = f["category_name"]?.Value<string>() ?? "",
-                    UploadedAt    = DateTimeOffset
+                    FileId       = f["file_id"]?.Value<long>() ?? 0,
+                    Name         = f["name"]?.Value<string>() ?? "",
+                    Version      = f["version"]?.Value<string>() ?? "",
+                    CategoryName = f["category_name"]?.Value<string>() ?? "",
+                    UploadedAt   = DateTimeOffset
                         .FromUnixTimeSeconds(f["uploaded_timestamp"]?.Value<long>() ?? 0)
                         .UtcDateTime
                 })
@@ -140,7 +149,6 @@ public class NexusApi
             return null;
         }
     }
-
 
     /// <summary>
     /// Returns .pak filenames inside the latest zip for a mod.
@@ -275,6 +283,12 @@ public class NexusApi
                 return null;
             }
 
+            if ((int)response.StatusCode == 429)
+            {
+                Logger.Warn($"NexusApi: rate limit exceeded (429) — {path}");
+                return null;
+            }
+
             if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 Logger.Warn($"NexusApi: forbidden (403) — {path} (Premium required?)");
@@ -304,6 +318,9 @@ public class NexusApi
 
     private void UpdateRateLimits(HttpResponseMessage response)
     {
+        var prevHourly = HourlyRemaining;
+        var prevDaily  = DailyRemaining;
+
         if (response.Headers.TryGetValues("X-RL-Hourly-Remaining", out var hourly) &&
             int.TryParse(hourly.FirstOrDefault(), out var h))
         {
@@ -316,9 +333,10 @@ public class NexusApi
             DailyRemaining = d;
         }
 
-        if (HourlyRemaining <= 5)
+        // 값이 바뀔 때만 로그 — 병렬 호출 시 동일 값 수백 번 찍히는 스팸 방지
+        if (HourlyRemaining <= 5 && HourlyRemaining != prevHourly)
             Logger.Warn($"NexusApi: hourly rate limit low ({HourlyRemaining} remaining)");
-        if (DailyRemaining <= 10)
+        if (DailyRemaining <= 10 && DailyRemaining != prevDaily)
             Logger.Warn($"NexusApi: daily rate limit low ({DailyRemaining} remaining)");
     }
 }

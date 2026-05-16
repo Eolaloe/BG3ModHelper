@@ -9,14 +9,12 @@ public class AppSettings
     public bool     NexusIsPremium    { get; set; } = false;
     public DateTime LastPremiumCheck  { get; set; } = DateTime.MinValue;
     public int      CacheExpiryHours  { get; set; } = 6;
-
-    /// <summary>
-    /// Back up existing .pak as .pak.bak before installing an update.
-    /// Disabled by default — enabling doubles disk usage for updated mods.
-    /// </summary>
-    public bool BackupBeforeUpdate { get; set; } = false;
+    public bool     BackupBeforeUpdate { get; set; } = false;
 
     /// <summary>Last time Nexus download history was synced (24h throttle).</summary>
     public DateTime LastNexusHistorySync  { get; set; } = DateTime.MinValue;
     public int      LastNexusHistoryCount { get; set; } = 0;
+
+    /// <summary>Last update check time — persisted so it survives app restarts.</summary>
+    public DateTime? LastCheck { get; set; } = null;
 }

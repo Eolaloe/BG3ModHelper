@@ -41,6 +41,7 @@ public class UpdateEntryViewModel : ViewModelBase
 
         PrimaryActionCommand = new RelayCommand(ExecutePrimaryAction, CanExecutePrimaryAction);
         SwitchSourceCommand  = new RelayCommand<string>(SwitchSource);
+        ToggleSourceCommand  = new RelayCommand(ToggleSource, () => HasMultipleSources);
         OpenPageCommand      = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(ActivePageUrl));
         RegisterNexusCommand = new RelayCommand(RegisterNexus, () => !string.IsNullOrEmpty(_nexusUrlInput.Trim()));
     }
@@ -55,6 +56,18 @@ public class UpdateEntryViewModel : ViewModelBase
         string.IsNullOrEmpty(NewVersion)
             ? $"v{CurrentVersion} → ?"
             : $"v{CurrentVersion} → v{NewVersion}";
+
+    /// <summary>현재 ActiveSource에 해당하는 버전 — 소스 전환 시 자동 갱신.</summary>
+    public string NewVersionDisplay
+    {
+        get
+        {
+            var v = ActiveSource == UpdateSource.MODIO
+                ? _entry.ModioNewVersion
+                : _entry.NexusNewVersion;
+            return string.IsNullOrEmpty(v) ? _entry.NewVersion : v;
+        }
+    }
 
     // ── Source ────────────────────────────────────────────────────────────
     public UpdateSource ActiveSource
@@ -71,6 +84,7 @@ public class UpdateEntryViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasMultipleSources));
             OnPropertyChanged(nameof(ShowSwitchButtons));
             OnPropertyChanged(nameof(ActivePageUrl));
+            OnPropertyChanged(nameof(NewVersionDisplay));  // 소스 전환 시 버전 표기 변경
             PrimaryActionCommand.RaiseCanExecuteChanged();
         }
     }
@@ -175,6 +189,7 @@ public class UpdateEntryViewModel : ViewModelBase
     // ── Commands ──────────────────────────────────────────────────────────
     public RelayCommand         PrimaryActionCommand { get; }
     public RelayCommand<string> SwitchSourceCommand  { get; }
+    public RelayCommand         ToggleSourceCommand  { get; }
     public RelayCommand         OpenPageCommand       { get; }
     public RelayCommand         RegisterNexusCommand  { get; }
 
@@ -252,7 +267,7 @@ public class UpdateEntryViewModel : ViewModelBase
 
         var file = await _modioApi.GetLatestFileAsync(_entry.PublishHandle);
         if (file == null)
-            throw new InvalidOperationException($"No file found for mod {_entry.PublishHandle}.");
+            throw new InvalidOperationException($"No file found for mod.io mod {_entry.PublishHandle}.");
 
         Logger.Info($"mod.io download URL obtained: {file.FileName}");
         return file.BinaryUrl;
@@ -261,16 +276,21 @@ public class UpdateEntryViewModel : ViewModelBase
     private async Task<string> GetNexusDownloadUrlAsync()
     {
         if (_nexusApi == null || _entry.NexusModId == null)
-            throw new InvalidOperationException("Nexus API or mod ID not available.");
+            throw new InvalidOperationException("Nexus API key is not configured, or this mod has no Nexus ID.");
 
-        // Get latest file to obtain fileId
+        // Step 1: 최신 파일 메타데이터 (fileId 획득)
         var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value);
         if (latest == null)
-            throw new InvalidOperationException($"No files found for Nexus mod {_entry.NexusModId}.");
+            throw new InvalidOperationException(
+                $"Could not retrieve file list for Nexus mod {_entry.NexusModId}.\n" +
+                "(Check logs for the exact server response — 403/429/404)");
 
+        // Step 2: Premium 다운로드 URL (download_link.json)
         var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.FileId);
         if (string.IsNullOrEmpty(url))
-            throw new InvalidOperationException($"No download URL for Nexus mod {_entry.NexusModId}.");
+            throw new InvalidOperationException(
+                $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.FileId}).\n" +
+                "(If this persists, verify that your API key has Premium access.)");
 
         return url;
     }
@@ -301,49 +321,59 @@ public class UpdateEntryViewModel : ViewModelBase
          Status != UpdateStatus.Downloading &&
          Status != UpdateStatus.Installing);
 
+    private void ToggleSource()
+    {
+        if (ActiveSource == UpdateSource.MODIO && HasNexus)
+            SwitchSource("nexus");
+        else if (ActiveSource == UpdateSource.NEXUSMODS && HasModio)
+            SwitchSource("modio");
+    }
+
     private void SwitchSource(string? source)
     {
         if (source == "modio" && HasModio)
+        {
+            _entry.PreferredSource = UpdateSource.MODIO;
             ActiveSource = UpdateSource.MODIO;
+        }
         else if (source == "nexus" && HasNexus)
+        {
+            _entry.PreferredSource = UpdateSource.NEXUSMODS;
             ActiveSource = UpdateSource.NEXUSMODS;
-
-        OnPropertyChanged(nameof(CanSwitchToModio));
-        OnPropertyChanged(nameof(CanSwitchToNexus));
+        }
     }
 
     private void OpenPage()
     {
         var url = ActivePageUrl;
-        if (string.IsNullOrEmpty(url)) return;
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception ex) { Logger.Warn("OpenPage: " + ex.Message); }
+        if (!string.IsNullOrEmpty(url))
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     private void RegisterNexus()
     {
         var input = _nexusUrlInput.Trim();
-        var match = System.Text.RegularExpressions.Regex.Match(input, @"mods/(\d+)");
-        if (!match.Success)
+        // URL에서 modId 파싱: nexusmods.com/baldursgate3/mods/{modId}
+        var match = System.Text.RegularExpressions.Regex.Match(
+            input, @"nexusmods\.com/[^/]+/mods/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var modId))
         {
-            MessageBox.Show(
-                "Please enter a valid Nexus mod URL.\nExample: https://www.nexusmods.com/baldursgate3/mods/12345",
+            MessageBox.Show("Please enter a valid Nexus Mods URL.\nExample: https://www.nexusmods.com/baldursgate3/mods/12345",
                 "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        var modId = int.Parse(match.Groups[1].Value);
         _entry.NexusModId = modId;
-        _entry.NexusUrl   = $"https://www.nexusmods.com/baldursgate3/mods/{modId}";
-        _entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
-        ActiveSource = UpdateSource.NEXUSMODS;
-
+        NexusRegistered?.Invoke(this, modId);
+        _nexusUrlInput      = "";
         _isRegisterExpanded = false;
+        OnPropertyChanged(nameof(NexusUrlInput));
         OnPropertyChanged(nameof(ShowNexusRegisterPanel));
         OnPropertyChanged(nameof(IsNexusUnregistered));
-        OnPropertyChanged(nameof(SourceBadge));
+        OnPropertyChanged(nameof(HasNexus));
+        OnPropertyChanged(nameof(CanAutoDownload));
         OnPropertyChanged(nameof(ActionLabel));
-
-        NexusRegistered?.Invoke(this, modId);
+        OnPropertyChanged(nameof(ActionStyle));
+        PrimaryActionCommand.RaiseCanExecuteChanged();
     }
 }

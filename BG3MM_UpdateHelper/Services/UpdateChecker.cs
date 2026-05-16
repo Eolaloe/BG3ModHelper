@@ -54,6 +54,8 @@ public static class UpdateChecker
             .ToList();
 
         // ── Always refresh caches on each check ──────────────────────────
+        // 캐시 TTL로 스킵하면 다운로드 완료 후에도 목록에 남는 stale 문제 발생.
+        // rate limit 보호는 NexusApi.Clone()으로 다운로드 인스턴스를 분리하여 처리.
         var tasks = new List<Task>();
 
         if (modioApi != null && modioMods.Count > 0)
@@ -70,7 +72,7 @@ public static class UpdateChecker
         }
 
         // ── Build update entries ──────────────────────────────────────────
-        var entries  = new Dictionary<string, ModUpdateEntry>(); // key = UUID
+        var entries      = new Dictionary<string, ModUpdateEntry>(); // key = UUID
         var checkedCount = 0;
 
         foreach (var mod in installedMods)
@@ -84,8 +86,9 @@ public static class UpdateChecker
                 if (IsNewer(modioData.LatestVersion, mod.Version))
                 {
                     entry = EnsureEntry(entries, mod);
-                    entry.NewVersion = modioData.LatestVersion;
-                    entry.ModioUrl   = modioData.ProfileUrl;
+                    entry.NewVersion      = modioData.LatestVersion;
+                    entry.ModioNewVersion = modioData.LatestVersion;  // 소스별 버전
+                    entry.ModioUrl        = modioData.ProfileUrl;
                     entry.AvailableSources.Add(UpdateSource.MODIO);
                     entry.Changelog  = "";
                 }
@@ -98,6 +101,7 @@ public static class UpdateChecker
                 if (IsNewer(nexusData.Version, mod.Version))
                 {
                     entry = EnsureEntry(entries, mod);
+                    entry.NexusNewVersion = nexusData.Version;  // 소스별 버전
                     // Keep the higher of the two new versions for display
                     if (string.IsNullOrEmpty(entry.NewVersion) ||
                         IsNewer(nexusData.Version, entry.NewVersion))
@@ -145,8 +149,8 @@ public static class UpdateChecker
         var targets = mods.Where(m => m.NexusModId.HasValue).ToList();
         Logger.Info($"UpdateChecker: refreshing Nexus cache for {targets.Count} mods (parallel)");
 
-        // 동시 5개 — Nexus rate limit(하루 20,000회) 안에서 안전
-        var semaphore = new SemaphoreSlim(50);  // Nexus: 하루 20,000회 제한, 50개 동시 안전
+        // 동시 50개 — Nexus rate limit(하루 20,000회) 안에서 안전
+        var semaphore = new SemaphoreSlim(50);
         var tasks     = targets.Select(async mod =>
         {
             await semaphore.WaitAsync();
@@ -206,6 +210,7 @@ public static class UpdateChecker
             {
                 UUID           = mod.UUID,
                 PublishHandle  = mod.PublishHandle,
+                NexusModId     = mod.NexusModId,   // ← BUG FIX: NexusModId를 entry에 전달
                 ModName        = mod.Name,
                 CurrentVersion = mod.Version,
                 PakFilePath    = mod.PakFilePath,
@@ -224,8 +229,8 @@ public static class UpdateChecker
     /// </summary>
     private static void DetermineDefaultSource(ModUpdateEntry entry, bool nexusIsPremium)
     {
-        var hasMod  = entry.AvailableSources.Contains(UpdateSource.MODIO);
-        var hasNex  = entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
+        var hasMod = entry.AvailableSources.Contains(UpdateSource.MODIO);
+        var hasNex = entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
 
         // Honor user pin
         if (entry.PreferredSource.HasValue)

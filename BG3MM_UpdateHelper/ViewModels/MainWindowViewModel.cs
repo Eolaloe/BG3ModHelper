@@ -31,6 +31,7 @@ public class MainWindowViewModel : ViewModelBase
     {
         _ownerWindow = ownerWindow;
         _settings    = SettingsStore.Load();
+        _lastCheck   = _settings.LastCheck;
 
         ChangeBG3MMFolderCommand = new RelayCommand(ChangeBG3MMFolder);
         CheckUpdatesCommand      = new RelayCommand(StartCheckUpdates, () => !_isScanning);
@@ -67,7 +68,7 @@ public class MainWindowViewModel : ViewModelBase
         _installedModsCount + " mod(s)";
 
     public string LastCheckDisplay =>
-        _lastCheck.HasValue ? _lastCheck.Value.ToString("yyyy-MM-dd HH:mm") : "Never";
+        _lastCheck.HasValue ? _lastCheck.Value.ToString("yyyy-MM-dd HH:mm") : "—";
 
     // ── Progress properties ───────────────────────────────────────────────
 
@@ -255,6 +256,8 @@ public class MainWindowViewModel : ViewModelBase
                 progress);
 
             _lastCheck = DateTime.Now;
+            _settings.LastCheck = _lastCheck;
+            SettingsStore.Save(_settings);
             OnPropertyChanged(nameof(LastCheckDisplay));
 
             if (updates.Count == 0)

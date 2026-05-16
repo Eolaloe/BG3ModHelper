@@ -14,6 +14,7 @@
             <Setter Property="Foreground" Value="#888888"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
         <Style x:Key="PrimaryActionButton" TargetType="Button">
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="Background" Value="#0078d4"/>
@@ -31,31 +32,40 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#106ebe"/></Trigger>
-                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#cccccc"/><Setter Property="Foreground" Value="#888888"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#cccccc"/>
+                                <Setter Property="Foreground" Value="#888888"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
         <Style x:Key="SecondaryActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
             <Setter Property="Background" Value="#555555"/>
         </Style>
+
         <Style x:Key="RegisterActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
             <Setter Property="Background" Value="#888888"/>
         </Style>
+
+        <!-- 소스 ⇄ 전환 버튼 스타일 -->
         <Style x:Key="SwitchButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#cccccc"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="#555555"/>
-            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Padding" Value="4,2"/>
             <Setter Property="Height" Value="20"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -65,46 +75,138 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 모드 이름 링크 버튼 스타일 -->
+        <Style x:Key="ModNameButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock x:Name="tb"
+                                   Text="{TemplateBinding Content}"
+                                   FontSize="13"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{TemplateBinding ToolTip}"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tb" Property="TextDecorations" Value="Underline"/>
+                                <Setter TargetName="tb" Property="Foreground" Value="#0078d4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DataTemplate DataType="{x:Type vm:UpdateEntryViewModel}">
             <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="30"/>    <!-- checkbox -->
-                            <ColumnDefinition Width="*"/>     <!-- name -->
+                            <ColumnDefinition Width="*"/>     <!-- name (링크) -->
                             <ColumnDefinition Width="80"/>    <!-- current ver -->
                             <ColumnDefinition Width="20"/>    <!-- arrow -->
                             <ColumnDefinition Width="80"/>    <!-- new ver -->
-                            <ColumnDefinition Width="80"/>    <!-- source -->
-                            <ColumnDefinition Width="115"/>   <!-- action -->
+                            <ColumnDefinition Width="100"/>   <!-- source + switch (80→100) -->
+                            <ColumnDefinition Width="100"/>   <!-- action -->
                             <ColumnDefinition Width="75"/>    <!-- status -->
                         </Grid.ColumnDefinitions>
-                        <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" IsEnabled="{Binding CanAutoDownload}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding ModName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="13" Margin="0,0,8,0" ToolTip="{Binding ModName}"/>
-                        <TextBlock Grid.Column="2" Text="{Binding CurrentVersion}" VerticalAlignment="Center" HorizontalAlignment="Right" FontFamily="Consolas" FontSize="11" Foreground="#444444" Margin="0,0,2,0"/>
-                        <TextBlock Grid.Column="3" Text="→" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="11" Foreground="#888888"/>
-                        <TextBlock Grid.Column="4" Text="{Binding NewVersion}" VerticalAlignment="Center" HorizontalAlignment="Left" FontFamily="Consolas" FontSize="11" Foreground="#444444" Margin="2,0,0,0"/>
-                        <Border Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="3" Padding="6,2">
-                            <Border.Background><SolidColorBrush Color="{Binding SourceBadgeColor}"/></Border.Background>
-                            <TextBlock Text="{Binding SourceBadge}" Foreground="White" FontSize="10" FontWeight="SemiBold"/>
-                        </Border>
-                        <Button Grid.Column="6" Content="{Binding ActionLabel}" Style="{Binding ActionStyle, Converter={StaticResource StyleKeyConverter}}" Command="{Binding PrimaryActionCommand}" IsEnabled="{Binding IsActionEnabled}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="7" Text="{Binding StatusText}" Foreground="{Binding StatusColor}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="11"/>
+
+                        <!-- 체크박스 -->
+                        <CheckBox Grid.Column="0"
+                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  IsEnabled="{Binding CanAutoDownload}"/>
+
+                        <!-- 모드 이름 — 클릭 시 해당 소스 페이지로 이동 -->
+                        <Button Grid.Column="1"
+                                Content="{Binding ModName}"
+                                ToolTip="{Binding ActivePageUrl}"
+                                Style="{StaticResource ModNameButton}"
+                                Command="{Binding OpenPageCommand}"
+                                VerticalAlignment="Center"
+                                Margin="0,0,8,0"/>
+
+                        <!-- 현재 버전 -->
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding CurrentVersion}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right"
+                                   FontFamily="Consolas" FontSize="11" Foreground="#444444"
+                                   Margin="0,0,2,0"/>
+
+                        <!-- 화살표 -->
+                        <TextBlock Grid.Column="3"
+                                   Text="→"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   FontSize="11" Foreground="#888888"/>
+
+                        <!-- 새 버전 — ActiveSource에 따라 해당 소스 버전 표시 -->
+                        <TextBlock Grid.Column="4"
+                                   Text="{Binding NewVersionDisplay}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"
+                                   FontFamily="Consolas" FontSize="11" Foreground="#444444"
+                                   Margin="2,0,0,0"/>
+
+                        <!-- 소스 배지 중앙 고정 + ⇄ 우측 고정 -->
+                        <Grid Grid.Column="5">
+                            <Border MinWidth="44" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    CornerRadius="3" Padding="4,1">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding SourceBadgeColor}"/>
+                                </Border.Background>
+                                <TextBlock Text="{Binding SourceBadge}"
+                                           Foreground="White" FontSize="10" FontWeight="SemiBold"
+                                           TextAlignment="Center"/>
+                            </Border>
+                            <!-- ⇄ 버튼: 항상 우측 끝, 배지 위치에 영향 없음 -->
+                            <Button Content="⇄"
+                                    Style="{StaticResource SwitchButton}"
+                                    Command="{Binding ToggleSourceCommand}"
+                                    Visibility="{Binding HasMultipleSources, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Width="22" Margin="0,0,2,0"
+                                    ToolTip="Switch source"/>
+                        </Grid>
+
+                        <!-- 액션 버튼 -->
+                        <Button Grid.Column="6"
+                                Content="{Binding ActionLabel}"
+                                Style="{Binding ActionStyle, Converter={StaticResource StyleKeyConverter}}"
+                                Command="{Binding PrimaryActionCommand}"
+                                IsEnabled="{Binding IsActionEnabled}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        <!-- 상태 -->
+                        <TextBlock Grid.Column="7"
+                                   Text="{Binding StatusText}"
+                                   Foreground="{Binding StatusColor}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   FontSize="11"/>
                     </Grid>
-                    <StackPanel Orientation="Horizontal" Margin="30,3,0,0" Visibility="{Binding ShowSwitchButtons, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Button Content="Get via mod.io" Style="{StaticResource SwitchButton}" Command="{Binding SwitchSourceCommand}" CommandParameter="modio" Margin="0,0,4,0" IsEnabled="{Binding CanSwitchToModio}"/>
-                        <Button Content="Get via Nexus"  Style="{StaticResource SwitchButton}" Command="{Binding SwitchSourceCommand}" CommandParameter="nexus"  Margin="0,0,4,0" IsEnabled="{Binding CanSwitchToNexus}"/>
-                        <Button Content="Open Page" Style="{StaticResource SwitchButton}" Command="{Binding OpenPageCommand}"/>
-                    </StackPanel>
-                    <StackPanel Margin="30,6,0,2" Visibility="{Binding ShowNexusRegisterPanel, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <TextBlock Text="Paste the Nexus mod page URL to link it. This will be shared with the community." FontSize="11" Foreground="#666666" Margin="0,0,0,4" TextWrapping="Wrap"/>
+
+                    <!-- Nexus 등록 패널 (미링크 모드용) -->
+                    <StackPanel Margin="30,6,0,2"
+                                Visibility="{Binding ShowNexusRegisterPanel, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="Paste the Nexus mod page URL to link it. This will be shared with the community."
+                                   FontSize="11" Foreground="#666666" Margin="0,0,0,4" TextWrapping="Wrap"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="60"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding NexusUrlInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="4,3" FontSize="11" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Link" Style="{StaticResource PrimaryActionButton}" Command="{Binding RegisterNexusCommand}"/>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding NexusUrlInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Padding="4,3" FontSize="11" Margin="0,0,6,0"
+                                     VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                    Content="Link"
+                                    Style="{StaticResource PrimaryActionButton}"
+                                    Command="{Binding RegisterNexusCommand}"/>
                         </Grid>
                     </StackPanel>
                 </StackPanel>
@@ -121,7 +223,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title + summary -->
+        <!-- 타이틀 + 요약 -->
         <Border Grid.Row="0" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="16,10">
             <StackPanel>
                 <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
@@ -129,8 +231,8 @@
             </StackPanel>
         </Border>
 
-        <!-- Column headers — 동일한 컬럼 너비 -->
-        <Border Grid.Row="1" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5">
+        <!-- 컬럼 헤더 -->
+        <Border Grid.Row="1" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5,25,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30"/>
@@ -138,30 +240,30 @@
                     <ColumnDefinition Width="80"/>
                     <ColumnDefinition Width="20"/>
                     <ColumnDefinition Width="80"/>
-                    <ColumnDefinition Width="80"/>
-                    <ColumnDefinition Width="115"/>
+                    <ColumnDefinition Width="100"/>  <!-- Source 80→100 -->
+                    <ColumnDefinition Width="100"/>
                     <ColumnDefinition Width="75"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="1" Text="Name"    Style="{StaticResource ColHeader}" HorizontalAlignment="Left"/>
-                <TextBlock Grid.Column="2" Text="Version" Style="{StaticResource ColHeader}" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Column="2" Grid.ColumnSpan="3" Text="Version" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                 <TextBlock Grid.Column="5" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                 <TextBlock Grid.Column="6" Text="Action"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                 <TextBlock Grid.Column="7" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
             </Grid>
         </Border>
 
-        <!-- List -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <!-- 목록 -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Visible">
             <ItemsControl ItemsSource="{Binding Entries}"/>
         </ScrollViewer>
 
-        <!-- Busy indicator -->
+        <!-- Busy 인디케이터 -->
         <Border Grid.Row="3" Padding="16,6" Background="#fff8e1" BorderBrush="#ffe082" BorderThickness="0,1,0,0"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
             <TextBlock Text="{Binding BusyText}" FontSize="12" Foreground="#555500"/>
         </Border>
 
-        <!-- Footer -->
+        <!-- 푸터 -->
         <Border Grid.Row="4" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,1,0,0" Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -177,7 +279,8 @@
                     <Button Content="Refresh"
                             Command="{Binding RefreshCommand}"
                             Padding="12,5" Margin="0,0,8,0"/>
-                    <Button Content="Download Selected" Style="{StaticResource PrimaryActionButton}"
+                    <Button Content="Download Selected"
+                            Style="{StaticResource PrimaryActionButton}"
                             Command="{Binding DownloadSelectedCommand}"
                             Height="32" MinWidth="150" FontSize="13" Margin="0,0,8,0"
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
