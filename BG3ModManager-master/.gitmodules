@@ -1,0 +1,6 @@
+[submodule "External/CrossSpeak"]
+	path = External/CrossSpeak
+	url = https://github.com/LaughingLeader/CrossSpeak
+[submodule "External/lslib"]
+	path = External/lslib
+	url = https://github.com/LaughingLeader/lslib

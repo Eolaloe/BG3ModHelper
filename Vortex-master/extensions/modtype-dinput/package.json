@@ -1,0 +1,45 @@
+{
+  "name": "modtype-dinput",
+  "version": "0.1.0",
+  "description": "Support for dinput mods",
+  "scripts": {
+    "build": "node build.mjs && pnpm extractInfo",
+    "typecheck": "pnpm tsc"
+  },
+  "author": "Black Tree Gaming Ltd.",
+  "license": "GPL-3.0",
+  "type": "commonjs",
+  "private": true,
+  "config": {
+    "extensionName": "Mod Type: dinput"
+  },
+  "devDependencies": {
+    "@types/bluebird": "catalog:",
+    "@types/i18next": "catalog:",
+    "@types/redux": "catalog:",
+    "bluebird": "catalog:",
+    "copyfiles": "catalog:",
+    "vortex-api": "workspace:*"
+  },
+  "nx": {
+    "tags": [
+      "vortex:extension"
+    ],
+    "targets": {
+      "build": {
+        "inputs": [
+          "default",
+          "typescript",
+          "vortex-api"
+        ]
+      },
+      "typecheck": {
+        "inputs": [
+          "default",
+          "typescript",
+          "vortex-api"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a Question
+    url: https://github.com/LaughingLeader/BG3ModManager/discussions/new?category=q-a
+    about: Ask a question in the Discussions tab.
+  - name: Request a Feature
+    url: https://github.com/LaughingLeader/BG3ModManager/discussions/new?category=feature-requests
+    about: Request a new feature in the Discussions tab.
