@@ -244,8 +244,8 @@ public class MainWindowViewModel : ViewModelBase
             var breakdown = new List<string>();
             var modioCount = updates.Count(u => u.AvailableSources.Contains(UpdateSource.MODIO));
             var nexusCount = updates.Count(u => u.AvailableSources.Contains(UpdateSource.NEXUSMODS));
-            if (modioCount > 0) breakdown.Add("mod.io: " + modioCount + " mod(s)");
             if (nexusCount > 0) breakdown.Add("Nexus: " + nexusCount + " mod(s)");
+            if (modioCount > 0) breakdown.Add("mod.io: " + modioCount + " mod(s)");
             if (breakdown.Count > 0)
                 AddActivity(string.Join(", ", breakdown));
 

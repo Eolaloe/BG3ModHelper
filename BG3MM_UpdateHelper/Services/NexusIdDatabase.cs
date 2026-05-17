@@ -182,6 +182,7 @@ public class NexusIdDatabase
 
         foreach (var prop in raw.Properties())
         {
+            if (prop.Name.StartsWith("_")) continue; // skip metadata keys
             var mod = prop.Value;
             if (mod == null) continue;
 
@@ -243,6 +244,8 @@ public class PakLookupEntry
     /// <summary>Display string for conflict resolution UI: [uploadedBy] ModName / FileName</summary>
     public string DisplayLabel => $"[{UploadedBy}] {ModName} / {FileName}";
 }
+
+
 
 /// <summary>Single UUID contribution entry.</summary>
 public class ContributeEntry
