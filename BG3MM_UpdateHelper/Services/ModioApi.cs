@@ -49,7 +49,7 @@ public class ModioApi
             // The "modfile" sub-object contains the latest file info
             var modfile = obj["modfile"] as JObject;
 
-            // modfile이 빈 객체인 경우 platforms[].modfile_live로 파일 조회
+            // Fall back to platforms[].modfile_live when modfile is an empty object
             if (modfile == null || !modfile.HasValues)
             {
                 var platforms = obj["platforms"] as JArray;
@@ -93,7 +93,7 @@ public class ModioApi
     /// </summary>
     public async Task<ModioModFile?> GetLatestFileAsync(ulong publishHandle)
     {
-        // files 엔드포인트 사용 — 단일 모드 조회 시 modfile이 빈 객체로 반환됨
+        // Use files endpoint — modfile is returned as empty object for single mod queries
         var json = await GetAsync(
             $"/v1/games/{Constants.MODIO_GAME_ID}/mods/{publishHandle}/files?_sort=-date_added&_limit=1");
         if (json == null) return null;

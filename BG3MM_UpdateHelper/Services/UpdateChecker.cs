@@ -1,3 +1,4 @@
+using System.IO;
 using BG3MM_UpdateHelper.Models;
 using BG3MM_UpdateHelper.Models.Cache;
 
@@ -7,79 +8,47 @@ namespace BG3MM_UpdateHelper.Services;
 /// Orchestrates the update check against Nexus Mods and mod.io.
 ///
 /// Flow:
-///   1. Load cached API responses (NexusCachedData, ModioCachedData).
-///   2. If cache is expired, call the APIs in parallel to refresh.
-///   3. Compare installed version vs. latest API version for each mod.
-///   4. Return a list of ModUpdateEntry for mods that have a newer version.
+///   mod.io:  PublishHandle → batch API call → version compare
+///   Nexus:   pakFileName → DB lookup → fileId/version compare (no API calls)
 ///
-/// Matching strategy (spec §4.6):
-///   - mod.io:  PublishHandle != 0 → query mod.io by PublishHandle
-///   - Nexus:   InstalledMod.NexusModId != null → query Nexus by ModId
-///   - Both:    produce a single ModUpdateEntry with both sources listed
-///
-/// Quiet-fallback (spec §4.7):
-///   - 404 / empty response → skip that market silently
-///   - No update available → omit from result list
+/// Nexus update detection (spec §4.11):
+///   1st priority: local fileId vs DB fileId (accurate)
+///   Fallback:     version string compare (when no local fileId recorded)
 /// </summary>
 public static class UpdateChecker
 {
-    /// <summary>
-    /// Checks for updates across Nexus and mod.io for the given installed mods.
-    /// </summary>
-    /// <param name="installedMods">Result of ModScanner.ScanAsync.</param>
-    /// <param name="nexusApi">Nexus client (may be null if key not set).</param>
-    /// <param name="modioApi">mod.io client (may be null if key not set).</param>
-    /// <param name="nexusIsPremium">Whether the Nexus user holds a Premium subscription.</param>
-    /// <param name="cacheExpiryHours">Cache TTL from settings.</param>
-    /// <param name="progress">Optional: reports number of mods checked so far.</param>
     public static async Task<List<ModUpdateEntry>> CheckAsync(
-        List<InstalledMod> installedMods,
-        NexusApi?          nexusApi,
-        ModioApi?          modioApi,
-        bool               nexusIsPremium,
-        int                cacheExpiryHours,
-        IProgress<int>?    progress = null)
+        List<InstalledMod>  installedMods,
+        NexusApi?           nexusApi,
+        ModioApi?           modioApi,
+        NexusIdDatabase?    nexusDb,
+        ModFileIdStore?     fileIdStore,
+        bool                nexusIsPremium,
+        IProgress<int>?     progress = null)
     {
-        // ── Load caches ───────────────────────────────────────────────────
-        var nexusCache = NexusApi.LoadCache();
+        // ── mod.io: refresh cache via API (batch, unchanged) ──────────────
         var modioCache = ModioApi.LoadCache();
 
-        // ── Determine which mods need API calls ───────────────────────────
         var modioMods = installedMods
             .Where(m => m.PublishHandle != 0 && modioApi?.CanMakeRequest() == true)
             .ToList();
 
-        var nexusMods = installedMods
-            .Where(m => m.NexusModId.HasValue && nexusApi?.CanMakeRequest() == true)
-            .ToList();
-
-        // ── Always refresh caches on each check ──────────────────────────
-        // 캐시 TTL로 스킵하면 다운로드 완료 후에도 목록에 남는 stale 문제 발생.
-        // rate limit 보호는 NexusApi.Clone()으로 다운로드 인스턴스를 분리하여 처리.
-        var tasks = new List<Task>();
-
         if (modioApi != null && modioMods.Count > 0)
-            tasks.Add(RefreshModioCache(modioMods, modioApi, modioCache));
-
-        if (nexusApi != null && nexusMods.Count > 0)
-            tasks.Add(RefreshNexusCache(nexusMods, nexusApi, nexusCache));
-
-        if (tasks.Count > 0)
         {
-            await Task.WhenAll(tasks);
+            await RefreshModioCache(modioMods, modioApi, modioCache);
             ModioApi.SaveCache(modioCache);
-            NexusApi.SaveCache(nexusCache);
         }
 
         // ── Build update entries ──────────────────────────────────────────
-        var entries      = new Dictionary<string, ModUpdateEntry>(); // key = UUID
+        var entries      = new Dictionary<string, ModUpdateEntry>();
         var checkedCount = 0;
+        var contributions = new List<ContributeEntry>();
 
         foreach (var mod in installedMods)
         {
             ModUpdateEntry? entry = null;
 
-            // mod.io check
+            // ── mod.io check (unchanged) ──────────────────────────────────
             if (mod.PublishHandle != 0 &&
                 modioCache.Mods.TryGetValue(mod.UUID, out var modioData))
             {
@@ -87,28 +56,58 @@ public static class UpdateChecker
                 {
                     entry = EnsureEntry(entries, mod);
                     entry.NewVersion      = modioData.LatestVersion;
-                    entry.ModioNewVersion = modioData.LatestVersion;  // 소스별 버전
+                    entry.ModioNewVersion = modioData.LatestVersion;
                     entry.ModioUrl        = modioData.ProfileUrl;
                     entry.AvailableSources.Add(UpdateSource.MODIO);
-                    entry.Changelog  = "";
+                    entry.Changelog       = "";
                 }
             }
 
-            // Nexus check
-            if (mod.NexusModId.HasValue &&
-                nexusCache.Mods.TryGetValue(mod.UUID, out var nexusData))
+            // ── Nexus check: DB lookup, no API calls ──────────────────────
+            if (nexusDb != null)
             {
-                if (IsNewer(nexusData.Version, mod.Version))
-                {
-                    entry = EnsureEntry(entries, mod);
-                    entry.NexusNewVersion = nexusData.Version;  // 소스별 버전
-                    // Keep the higher of the two new versions for display
-                    if (string.IsNullOrEmpty(entry.NewVersion) ||
-                        IsNewer(nexusData.Version, entry.NewVersion))
-                        entry.NewVersion = nexusData.Version;
+                var pakFileName = Path.GetFileName(mod.PakFilePath);
+                var dbEntries   = nexusDb.LookupByPakFileName(pakFileName);
 
-                    entry.NexusUrl = nexusData.ProfileUrl;
-                    entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                // Case 2 fallback: pakFileName changed but same modId+fileName
+                if (dbEntries.Count == 0 && fileIdStore != null)
+                {
+                    var stored = fileIdStore.GetEntry(mod.UUID);
+                    if (stored != null && stored.ModId != 0 && !string.IsNullOrEmpty(stored.FileName))
+                        dbEntries = nexusDb.LookupByModIdAndFileName(stored.ModId, stored.FileName);
+                }
+
+                // Resolve conflict: uuid match → auto, else skip
+                var dbEntry = dbEntries.Count == 1
+                    ? dbEntries[0]
+                    : dbEntries.FirstOrDefault(e =>
+                        string.Equals(e.Uuid, mod.UUID,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (dbEntry != null)
+                {
+                    // Inject modId if not already set
+                    if (!mod.NexusModId.HasValue)
+                        mod.NexusModId = dbEntry.ModId;
+
+                    bool hasUpdate = HasNexusUpdate(mod, dbEntry, fileIdStore);
+                    if (hasUpdate)
+                    {
+                        entry = EnsureEntry(entries, mod);
+                        entry.NexusNewVersion = dbEntry.Version;
+                        entry.NexusFileId     = dbEntry.FileId;
+                        if (string.IsNullOrEmpty(entry.NewVersion) ||
+                            IsNewer(dbEntry.Version, entry.NewVersion))
+                            entry.NewVersion = dbEntry.Version;
+
+                        entry.NexusUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.ModId}";
+                        entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                    }
+
+                    // Collect UUID contribution if DB entry has none
+                    if (dbEntry.Uuid == null && !string.IsNullOrEmpty(mod.UUID))
+                        contributions.Add(new ContributeEntry(
+                            dbEntry.PakFileName, mod.UUID, dbEntry.ModId, dbEntry.FileId));
                 }
             }
 
@@ -120,15 +119,38 @@ public static class UpdateChecker
         }
 
         Logger.Info($"UpdateChecker: {entries.Count} update(s) found out of {installedMods.Count} mods");
+
+        // Send UUID contributions in a single batch request
+        if (nexusDb != null && contributions.Count > 0)
+            _ = nexusDb.ContributeBatchAsync(contributions);
+
         return entries.Values.ToList();
     }
 
-    // ── Cache refresh helpers ─────────────────────────────────────────────
+    // ── Nexus update detection ────────────────────────────────────────────
+
+    /// <summary>
+    /// Determines whether a Nexus update is available (spec §4.11).
+    /// 1st: fileId comparison (accurate).
+    /// Fallback: version string comparison.
+    /// </summary>
+    private static bool HasNexusUpdate(
+        InstalledMod mod, PakLookupEntry dbEntry, ModFileIdStore? store)
+    {
+        var localFileId = store?.GetFileId(mod.UUID);
+        if (localFileId.HasValue)
+            return localFileId.Value != dbEntry.FileId;
+
+        // Fallback: version string (may produce false positives once)
+        return IsNewer(dbEntry.Version, mod.Version);
+    }
+
+    // ── mod.io cache refresh ──────────────────────────────────────────────
 
     private static async Task RefreshModioCache(
         List<InstalledMod> mods, ModioApi api, ModioCachedData cache)
     {
-        Logger.Info($"UpdateChecker: refreshing mod.io cache for {mods.Count} mods (batch)");
+        Logger.Info($"UpdateChecker: refreshing mod.io cache for {mods.Count} mods");
 
         var handleToUuid = new Dictionary<ulong, string>();
         foreach (var mod in mods)
@@ -143,44 +165,8 @@ public static class UpdateChecker
         Logger.Info($"UpdateChecker: mod.io cache refresh complete ({batch.Count} mods)");
     }
 
-    private static async Task RefreshNexusCache(
-        List<InstalledMod> mods, NexusApi api, NexusCachedData cache)
-    {
-        var targets = mods.Where(m => m.NexusModId.HasValue).ToList();
-        Logger.Info($"UpdateChecker: refreshing Nexus cache for {targets.Count} mods (parallel)");
-
-        // 동시 50개 — Nexus rate limit(하루 20,000회) 안에서 안전
-        var semaphore = new SemaphoreSlim(50);
-        var tasks     = targets.Select(async mod =>
-        {
-            await semaphore.WaitAsync();
-            try
-            {
-                if (!api.CanMakeRequest()) return;
-                var data = await api.GetModInfoAsync(mod.NexusModId!.Value);
-                if (data != null)
-                    lock (cache.Mods) { cache.Mods[mod.UUID] = data; }
-            }
-            finally { semaphore.Release(); }
-        });
-
-        await Task.WhenAll(tasks);
-        cache.LastUpdated = DateTime.UtcNow;
-        Logger.Info($"UpdateChecker: Nexus cache refresh complete ({cache.Mods.Count} entries)");
-    }
-
     // ── Version comparison ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Returns true if <paramref name="candidate"/> is strictly newer than
-    /// <paramref name="current"/>.
-    ///
-    /// Strategy (spec §4.6):
-    ///   1. Try SemVer / System.Version parse.
-    ///   2. Strip leading "v" before parsing.
-    ///   3. If parsing fails for either side, fall back to string inequality
-    ///      (treats any difference as "newer" — conservative).
-    /// </summary>
     public static bool IsNewer(string candidate, string current)
     {
         if (string.IsNullOrWhiteSpace(candidate)) return false;
@@ -192,7 +178,6 @@ public static class UpdateChecker
         if (Version.TryParse(c, out var cv) && Version.TryParse(v, out var vv))
             return cv > vv;
 
-        // Fallback: string inequality (any change is treated as an update)
         return !string.Equals(c, v, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -210,7 +195,7 @@ public static class UpdateChecker
             {
                 UUID           = mod.UUID,
                 PublishHandle  = mod.PublishHandle,
-                NexusModId     = mod.NexusModId,   // ← BUG FIX: NexusModId를 entry에 전달
+                NexusModId     = mod.NexusModId,
                 ModName        = mod.Name,
                 CurrentVersion = mod.Version,
                 PakFilePath    = mod.PakFilePath,
@@ -220,19 +205,11 @@ public static class UpdateChecker
         return entry;
     }
 
-    /// <summary>
-    /// Decides DefaultSource and CanAutoDownload per spec §4.5 / §4.6:
-    ///   1. mod.io available → prefer it (auto download always works)
-    ///   2. Nexus Premium → Nexus is fine too
-    ///   3. Nexus free → no auto download
-    ///   4. Both → mod.io preferred unless overridden by PreferredSource
-    /// </summary>
     private static void DetermineDefaultSource(ModUpdateEntry entry, bool nexusIsPremium)
     {
         var hasMod = entry.AvailableSources.Contains(UpdateSource.MODIO);
         var hasNex = entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
 
-        // Honor user pin
         if (entry.PreferredSource.HasValue)
         {
             entry.DefaultSource   = entry.PreferredSource.Value;
@@ -254,7 +231,7 @@ public static class UpdateChecker
         else
         {
             entry.DefaultSource   = UpdateSource.NEXUSMODS;
-            entry.CanAutoDownload = false; // free Nexus user → page-open fallback
+            entry.CanAutoDownload = false;
         }
     }
 }

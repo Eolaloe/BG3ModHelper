@@ -1,21 +1,25 @@
 using System.IO;
 using System.Net.Http;
 using BG3MM_UpdateHelper.Models;
-using BG3MM_UpdateHelper.Models.Cache;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace BG3MM_UpdateHelper.Services;
 
 /// <summary>
-/// Manages the UUID ↔ NexusModId community database.
+/// Manages the community Nexus mod database (v1.5 structure).
 ///
-/// Sources (priority order):
-///   1. Local cache  — nexusid_local.json  (user's own mappings)
-///   2. GitHub DB    — nexusid_db.json     (community, synced every 12h)
+/// DB structure (GitHub):
+///   { "modId": { modName, uploadedBy, modId, paks: [{ fileName, version, pakFileName, fileId, uuid }] } }
 ///
-/// Contribution flow:
-///   User submits UUID↔modId → Vercel validates → merged into GitHub DB
+/// In-memory index:
+///   pakFileName → List&lt;PakLookupEntry&gt; (O(1) lookup)
+///
+/// Update check flow:
+///   pakFileName → DB lookup → version/fileId (no API calls)
+///
+/// Contribute flow:
+///   pakFileName + UUID → POST to contribute endpoint
 /// </summary>
 public class NexusIdDatabase
 {
@@ -23,174 +27,72 @@ public class NexusIdDatabase
 
     private static readonly string DbCachePath =
         Path.Combine(SettingsStore.GetDataFolder(), "nexusid_db.json");
-    private static readonly string LocalPath =
-        Path.Combine(SettingsStore.GetDataFolder(), "nexusid_local.json");
 
-    // In-memory merged view: UUID → entry
-    private Dictionary<string, NexusIdEntry> _db = new();
+    // In-memory index: pakFileName (no extension, lowercase) → entries
+    private Dictionary<string, List<PakLookupEntry>> _pakIndex = new();
 
-    private DateTime _lastSynced = DateTime.MinValue;
 
-    // ── Initialization ────────────────────────────────────────────────────
 
-    /// <summary>Load local cache + GitHub DB (sync if stale).</summary>
+    /// <summary>Load DB from cache / GitHub (sync if stale).</summary>
     public async Task InitAsync()
     {
-        LoadLocal();
         await SyncFromGitHubAsync();
     }
 
     // ── Lookup ────────────────────────────────────────────────────────────
 
-    /// <summary>Returns the Nexus mod ID for a UUID, or null if unknown.</summary>
-    public int? GetNexusModId(string uuid)
+    /// <summary>
+    /// Looks up pak entries by pakFileName (without extension).
+    /// Returns empty list if not found.
+    /// </summary>
+    public List<PakLookupEntry> LookupByPakFileName(string pakFileName)
     {
-        if (_db.TryGetValue(uuid.ToLowerInvariant(), out var entry))
-            return entry.ModId;
-        return null;
+        var key = NormalizeKey(pakFileName);
+        return _pakIndex.TryGetValue(key, out var entries) ? entries : new();
     }
-
-    // ── Matching: history + file-metadata ─────────────────────────────────
 
     /// <summary>
-    /// Matches Nexus download history entries against installed mods
-    /// using file-metadata pak name lookup. Saves new mappings locally
-    /// and submits them to the community DB.
+    /// Case 2 fallback: pakFileName changed but same modId + fileName.
     /// </summary>
-    public async Task<int> SyncFromHistoryAsync(
-        List<NexusDownloadEntry> history,
-        List<InstalledMod> installedMods,
-        NexusApi nexusApi,
-        IProgress<(int done, int total)>? progress = null)
+    public List<PakLookupEntry> LookupByModIdAndFileName(int modId, string fileName)
     {
-        // pak 파일명 → UUID 역매핑
-        var pakToUuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var mod in installedMods)
-        {
-            var pakName = Path.GetFileNameWithoutExtension(mod.PakFilePath);
-            if (!string.IsNullOrEmpty(pakName))
-                pakToUuid.TryAdd(pakName, mod.UUID);
-        }
-
-        var newMappings = new Dictionary<string, NexusIdEntry>();
-        int done = 0;
-
-        // 이미 DB에 있는 mod_id 스킵
-        var knownModIds = _db.Values.Select(e => e.ModId).ToHashSet();
-
-        var targets = history
-            .Where(h => !knownModIds.Contains(h.ModId))
+        return _pakIndex.Values
+            .SelectMany(e => e)
+            .Where(e => e.ModId == modId &&
+                        string.Equals(e.FileName, fileName, StringComparison.OrdinalIgnoreCase))
             .ToList();
-
-        foreach (var entry in targets)
-        {
-            progress?.Report((++done, targets.Count));
-
-            try
-            {
-                // 최신 파일 정보 → pak명 목록
-                var pakNames = await nexusApi.GetPakNamesAsync(entry.ModId);
-                foreach (var pak in pakNames)
-                {
-                    var key = Path.GetFileNameWithoutExtension(pak);
-                    if (pakToUuid.TryGetValue(key, out var uuid))
-                    {
-                        var idEntry = new NexusIdEntry(entry.ModId, entry.Name);
-                        newMappings[uuid.ToLowerInvariant()] = idEntry;
-                        _db[uuid.ToLowerInvariant()]         = idEntry;
-                        Logger.Info($"NexusIdDatabase: matched {entry.Name} (mod_id={entry.ModId}) → {uuid}");
-                        break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"NexusIdDatabase: skip mod_id={entry.ModId} — {ex.Message}");
-            }
-        }
-
-        if (newMappings.Count > 0)
-        {
-            SaveLocal();
-            await SubmitContributionAsync(newMappings);
-        }
-
-        Logger.Info($"NexusIdDatabase: history sync complete — {newMappings.Count} new mappings");
-        return newMappings.Count;
     }
 
-    /// <summary>Manually register a UUID↔modId mapping from user URL input.</summary>
-    public async Task RegisterManualAsync(string uuid, int modId, string modName)
+    /// <summary>
+    /// Returns a single unambiguous entry, or null if there are multiple matches.
+    /// Callers should show conflict UI when null + LookupByPakFileName returns > 1.
+    /// </summary>
+    public PakLookupEntry? LookupSingle(string pakFileName)
     {
-        var entry = new NexusIdEntry(modId, modName);
-        _db[uuid.ToLowerInvariant()] = entry;
-        SaveLocal();
-
-        await SubmitContributionAsync(
-            new Dictionary<string, NexusIdEntry>
-            {
-                [uuid.ToLowerInvariant()] = entry
-            });
-
-        Logger.Info($"NexusIdDatabase: manual register mod_id={modId} → {uuid}");
+        var entries = LookupByPakFileName(pakFileName);
+        return entries.Count == 1 ? entries[0] : null;
     }
 
-    // ── GitHub sync ───────────────────────────────────────────────────────
+    // ── Contribute ────────────────────────────────────────────────────────
 
-    private async Task SyncFromGitHubAsync()
-    {
-        if (DateTime.UtcNow - _lastSynced < TimeSpan.FromHours(Constants.NEXUS_UUID_DB_CACHE_HOURS))
-        {
-            LoadDbCache();
-            return;
-        }
-
-        try
-        {
-            Logger.Info("NexusIdDatabase: syncing from GitHub...");
-            var json = await _http.GetStringAsync(Constants.NEXUS_UUID_DB_URL);
-
-            // GitHub DB 형식: {uuid: {modId, name}}
-            var raw = JsonConvert.DeserializeObject<Dictionary<string, NexusIdEntry>>(json);
-            if (raw != null)
-            {
-                // 로컬 우선 머지
-                foreach (var kv in raw)
-                {
-                    var key = kv.Key.ToLowerInvariant();
-                    if (!_db.ContainsKey(key))
-                        _db[key] = kv.Value;
-                }
-
-                File.WriteAllText(DbCachePath, json);
-                _lastSynced = DateTime.UtcNow;
-                Logger.Info($"NexusIdDatabase: synced {raw.Count} entries from GitHub");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"NexusIdDatabase: GitHub sync failed — {ex.Message}. Using local cache.");
-            LoadDbCache();
-        }
-    }
-
-    // ── Vercel contribution ───────────────────────────────────────────────
-
-    private static async Task SubmitContributionAsync(
-        Dictionary<string, NexusIdEntry> mappings)
+    /// <summary>
+    /// Submits a batch of UUID contributions in a single request.
+    /// Only called for DB entries where uuid == null.
+    /// </summary>
+    public async Task ContributeBatchAsync(List<ContributeEntry> entries)
     {
         if (string.IsNullOrEmpty(Constants.NEXUS_UUID_SUBMIT_URL)) return;
-        if (mappings.Count == 0) return;
+        if (entries.Count == 0) return;
 
         try
         {
-            var payload = JsonConvert.SerializeObject(mappings);
+            var payload = JsonConvert.SerializeObject(entries);
             var content = new StringContent(payload,
                 System.Text.Encoding.UTF8, "application/json");
 
             var resp = await _http.PostAsync(Constants.NEXUS_UUID_SUBMIT_URL, content);
             if (resp.IsSuccessStatusCode)
-                Logger.Info($"NexusIdDatabase: contributed {mappings.Count} mappings");
+                Logger.Info($"NexusIdDatabase: contributed {entries.Count} UUID(s)");
             else
                 Logger.Warn($"NexusIdDatabase: contribution rejected — {(int)resp.StatusCode}");
         }
@@ -200,54 +102,162 @@ public class NexusIdDatabase
         }
     }
 
-    // ── Local I/O ─────────────────────────────────────────────────────────
-
-    private void LoadLocal()
+    // Keep single entry method for backward compatibility
+    public async Task ContributeUuidAsync(string pakFileName, string uuid, int modId, long fileId)
     {
-        if (!File.Exists(LocalPath)) return;
-        try
+        await ContributeBatchAsync(new List<ContributeEntry>
         {
-            var raw = JsonConvert.DeserializeObject<Dictionary<string, NexusIdEntry>>(
-                File.ReadAllText(LocalPath));
-            if (raw == null) return;
-
-            foreach (var kv in raw)
-                _db[kv.Key.ToLowerInvariant()] = kv.Value;
-
-            Logger.Info($"NexusIdDatabase: loaded {raw.Count} local entries");
-        }
-        catch (Exception ex) { Logger.Warn($"NexusIdDatabase.LoadLocal: {ex.Message}"); }
+            new ContributeEntry(pakFileName, uuid, modId, fileId)
+        });
     }
 
-    private void LoadDbCache()
+    // ── GitHub sync ───────────────────────────────────────────────────────
+
+    private string? _cachedETag;
+
+    private async Task SyncFromGitHubAsync()
+    {
+        // Always check GitHub for changes via ETag (no fixed timer)
+        try
+        {
+            Logger.Info("NexusIdDatabase: checking GitHub for updates...");
+
+            using var request = new System.Net.Http.HttpRequestMessage(
+                System.Net.Http.HttpMethod.Get, Constants.NEXUS_UUID_DB_URL);
+
+            if (!string.IsNullOrEmpty(_cachedETag))
+                request.Headers.TryAddWithoutValidation("If-None-Match", _cachedETag);
+
+            using var response = await _http.SendAsync(request);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
+            {
+                Logger.Info("NexusIdDatabase: DB unchanged, using cache.");
+                LoadFromCache();
+                return;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.Warn($"NexusIdDatabase: GitHub returned {(int)response.StatusCode}. Using cache.");
+                LoadFromCache();
+                return;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            _cachedETag = response.Headers.ETag?.Tag;
+
+            File.WriteAllText(DbCachePath, json);
+            BuildIndex(json);
+            Logger.Info($"NexusIdDatabase: synced — {_pakIndex.Count} pak entries indexed");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusIdDatabase: GitHub sync failed — {ex.Message}. Using cache.");
+            LoadFromCache();
+        }
+    }
+
+    // ── Index building ────────────────────────────────────────────────────
+
+    private void LoadFromCache()
     {
         if (!File.Exists(DbCachePath)) return;
         try
         {
-            var raw = JsonConvert.DeserializeObject<Dictionary<string, NexusIdEntry>>(
-                File.ReadAllText(DbCachePath));
-            if (raw == null) return;
+            BuildIndex(File.ReadAllText(DbCachePath));
+            Logger.Info($"NexusIdDatabase: loaded from cache — {_pakIndex.Count} pak entries");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusIdDatabase.LoadFromCache: {ex.Message}");
+        }
+    }
 
-            foreach (var kv in raw)
+    private void BuildIndex(string json)
+    {
+        // DB structure: { "modId": { modName, uploadedBy, modId, paks: [...] } }
+        var raw = JObject.Parse(json);
+        var index = new Dictionary<string, List<PakLookupEntry>>();
+
+        foreach (var prop in raw.Properties())
+        {
+            var mod = prop.Value;
+            if (mod == null) continue;
+
+            var modId      = mod["modId"]?.Value<int>() ?? 0;
+            var modName    = mod["modName"]?.Value<string>() ?? "";
+            var uploadedBy = mod["uploadedBy"]?.Value<string>() ?? "";
+            var paks       = mod["paks"] as JArray;
+            if (paks == null) continue;
+
+            foreach (var pak in paks)
             {
-                var key = kv.Key.ToLowerInvariant();
-                if (!_db.ContainsKey(key))
-                    _db[key] = kv.Value;
+                var pakFileName = pak["pakFileName"]?.Value<string>();
+                if (string.IsNullOrEmpty(pakFileName)) continue;
+
+                var entry = new PakLookupEntry
+                {
+                    ModId      = modId,
+                    ModName    = modName,
+                    UploadedBy = uploadedBy,
+                    FileName   = pak["fileName"]?.Value<string>() ?? "",
+                    Version    = pak["version"]?.Value<string>() ?? "",
+                    PakFileName = pakFileName,
+                    FileId     = pak["fileId"]?.Value<long>() ?? 0,
+                    Uuid       = pak["uuid"]?.Value<string>(),
+                };
+
+                var key = NormalizeKey(pakFileName);
+                if (!index.TryGetValue(key, out var list))
+                {
+                    list = new List<PakLookupEntry>();
+                    index[key] = list;
+                }
+                list.Add(entry);
             }
         }
-        catch (Exception ex) { Logger.Warn($"NexusIdDatabase.LoadDbCache: {ex.Message}"); }
+
+        _pakIndex = index;
     }
 
-    private void SaveLocal()
-    {
-        try
-        {
-            File.WriteAllText(LocalPath,
-                JsonConvert.SerializeObject(_db, Formatting.Indented));
-        }
-        catch (Exception ex) { Logger.Warn($"NexusIdDatabase.SaveLocal: {ex.Message}"); }
-    }
+    private static string NormalizeKey(string pakFileName) =>
+        Path.GetFileNameWithoutExtension(pakFileName).ToLowerInvariant();
 }
 
-/// <summary>Single entry in the UUID↔NexusModId database.</summary>
-public record NexusIdEntry(int ModId, string Name);
+/// <summary>
+/// In-memory representation of a pak entry from the community DB.
+/// Used for update checking and conflict resolution UI.
+/// </summary>
+public class PakLookupEntry
+{
+    public int    ModId      { get; init; }
+    public string ModName    { get; init; } = "";
+    public string UploadedBy { get; init; } = "";
+    public string FileName   { get; init; } = "";  // File tab title on Nexus
+    public string Version    { get; init; } = "";
+    public string PakFileName { get; init; } = "";
+    public long   FileId     { get; init; }
+    public string? Uuid      { get; init; }
+
+    /// <summary>Display string for conflict resolution UI: [uploadedBy] ModName / FileName</summary>
+    public string DisplayLabel => $"[{UploadedBy}] {ModName} / {FileName}";
+}
+
+/// <summary>Single UUID contribution entry.</summary>
+public class ContributeEntry
+{
+    [JsonProperty("pakFileName")] public string PakFileName { get; set; } = "";
+    [JsonProperty("uuid")]        public string Uuid        { get; set; } = "";
+    [JsonProperty("modId")]       public int    ModId       { get; set; }
+    [JsonProperty("fileId")]      public long   FileId      { get; set; }
+
+    public ContributeEntry() { }
+    public ContributeEntry(string pakFileName, string uuid, int modId, long fileId)
+    {
+        PakFileName = pakFileName;
+        Uuid        = uuid;
+        ModId       = modId;
+        FileId      = fileId;
+    }
+}

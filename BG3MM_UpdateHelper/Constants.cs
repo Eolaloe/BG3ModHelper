@@ -19,8 +19,7 @@ public static class Constants
     public const string NEXUS_UUID_DB_URL =
         "https://raw.githubusercontent.com/Eolaloe/bg3-nexus-uuid-db/main/uuid_nexus_db.json";
     public const string NEXUS_UUID_SUBMIT_URL =
-        "https://bg3-nexus-uuid-db.vercel.app/api/contribute";  // Vercel (미구현, 향후)
-    public const int    NEXUS_UUID_DB_CACHE_HOURS = 12;
+        "https://bg3-nexus-uuid-db.vercel.app/api/contribute";
 
     // BG3MM process
     public const string BG3MM_PROCESS_NAME = "BG3ModManager";

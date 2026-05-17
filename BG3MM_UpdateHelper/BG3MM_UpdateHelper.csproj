@@ -10,6 +10,13 @@
 		<RootNamespace>BG3MM_UpdateHelper</RootNamespace>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
+		<ApplicationIcon>app.ico</ApplicationIcon>
+
+		<!-- Release / Publish settings -->
+		<PublishSingleFile>true</PublishSingleFile>
+		<SelfContained>false</SelfContained>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<PublishReadyToRun>true</PublishReadyToRun>
 	</PropertyGroup>
 
 	<ItemGroup>

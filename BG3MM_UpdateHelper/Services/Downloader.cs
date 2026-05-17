@@ -23,7 +23,12 @@ public static class Downloader
         string downloadUrl,
         string existingPakPath,
         string modsFolder,
-        bool backupEnabled = false,
+        bool backupEnabled              = false,
+        string? uuid                    = null,
+        int modId                       = 0,
+        long fileId                     = 0,
+        string fileName                 = "",
+        ModFileIdStore? fileIdStore     = null,
         IProgress<DownloadProgress>? progress = null,
         CancellationToken ct = default)
     {
@@ -62,12 +67,23 @@ public static class Downloader
             }
 
             // Step 5: Install new pak
-            progress?.Report(new DownloadProgress("Installing...", 99));
+            progress?.Report(new DownloadProgress("Applying...", 99));
             var destPath = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
-            File.Copy(sourceFile, destPath, overwrite: true);
+            try
+            {
+                File.Copy(sourceFile, destPath, overwrite: true);
+            }
+            catch (IOException ex)
+            {
+                throw new PakInUseException(Path.GetFileName(destPath), ex);
+            }
 
             progress?.Report(new DownloadProgress("Done", 100));
             Logger.Info($"Downloader: installed {Path.GetFileName(destPath)}");
+
+            // Record fileId for accurate update detection next time (spec §4.11)
+            if (fileIdStore != null && !string.IsNullOrEmpty(uuid) && fileId != 0)
+                fileIdStore.SetFileId(uuid, modId, fileId, fileName);
 
             // Invalidate installedmods.json cache entry so next scan re-parses the new pak
             InvalidateCache(existingPakPath, destPath);
@@ -160,7 +176,7 @@ public static class Downloader
     /// </summary>
     private static void InvalidateCache(string oldPakPath, string newPakPath)
     {
-        // 1. installedmods.json에서 해당 항목 제거 → 다음 스캔 시 새 버전 재파싱
+        // 1. Remove from installedmods.json so next scan re-parses the new version
         try
         {
             var cacheFile = Path.Combine(SettingsStore.GetDataFolder(), "installedmods.json");
@@ -185,7 +201,7 @@ public static class Downloader
             Logger.Warn($"Downloader: installedmods cache invalidation failed — {ex.Message}");
         }
 
-        // 2. modiodata.json에서 해당 모드 항목 삭제 → 다음 체크 시 API 재조회
+        // 2. Expire modiodata.json so next check re-fetches from API
         try
         {
             var modioCacheFile = Path.Combine(SettingsStore.GetDataFolder(), "modiodata.json");
@@ -196,7 +212,7 @@ public static class Downloader
                     BG3MM_UpdateHelper.Models.Cache.ModioCachedData>(json);
                 if (cache != null)
                 {
-                    // 파일명으로 UUID 추정이 어려우므로 전체 캐시 만료 처리
+                    // Cannot reliably match by filename, so expire the entire cache
                     cache.LastUpdated = DateTime.MinValue;
                     File.WriteAllText(modioCacheFile,
                         Newtonsoft.Json.JsonConvert.SerializeObject(cache,
@@ -230,3 +246,18 @@ public static class Downloader
 
 /// <summary>Progress info for download UI.</summary>
 public record DownloadProgress(string Text, int Percent);
+
+/// <summary>
+/// Thrown when the .pak file cannot be overwritten because it is locked
+/// (e.g. BG3 or another process has it open).
+/// </summary>
+public class PakInUseException : IOException
+{
+    public string PakFileName { get; }
+
+    public PakInUseException(string pakFileName, Exception inner)
+        : base($"Cannot overwrite {pakFileName} — close BG3 and retry.", inner)
+    {
+        PakFileName = pakFileName;
+    }
+}

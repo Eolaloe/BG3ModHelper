@@ -11,8 +11,9 @@ public class UpdateEntryViewModel : ViewModelBase
     private readonly bool           _nexusIsPremium;
     private readonly string         _modsFolder;
     private readonly bool           _backupEnabled;
-    private readonly ModioApi?      _modioApi;
-    private readonly NexusApi?      _nexusApi;
+    private readonly ModioApi?       _modioApi;
+    private readonly NexusApi?       _nexusApi;
+    private readonly ModFileIdStore? _fileIdStore;
 
     private bool         _isSelected;
     private UpdateStatus _status;
@@ -25,9 +26,10 @@ public class UpdateEntryViewModel : ViewModelBase
         ModUpdateEntry entry,
         bool nexusIsPremium,
         string modsFolder,
-        bool backupEnabled  = false,
-        ModioApi? modioApi  = null,
-        NexusApi? nexusApi  = null)
+        bool backupEnabled           = false,
+        ModioApi? modioApi           = null,
+        NexusApi? nexusApi           = null,
+        ModFileIdStore? fileIdStore  = null)
     {
         _entry          = entry;
         _nexusIsPremium = nexusIsPremium;
@@ -35,6 +37,7 @@ public class UpdateEntryViewModel : ViewModelBase
         _backupEnabled  = backupEnabled;
         _modioApi       = modioApi;
         _nexusApi       = nexusApi;
+        _fileIdStore    = fileIdStore;
         _activeSource   = entry.DefaultSource;
         _status         = UpdateStatus.Pending;
         _isSelected     = entry.CanAutoDownload;
@@ -57,7 +60,7 @@ public class UpdateEntryViewModel : ViewModelBase
             ? $"v{CurrentVersion} → ?"
             : $"v{CurrentVersion} → v{NewVersion}";
 
-    /// <summary>현재 ActiveSource에 해당하는 버전 — 소스 전환 시 자동 갱신.</summary>
+    /// <summary>Version for the current ActiveSource — auto-updated on source switch.</summary>
     public string NewVersionDisplay
     {
         get
@@ -84,7 +87,7 @@ public class UpdateEntryViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasMultipleSources));
             OnPropertyChanged(nameof(ShowSwitchButtons));
             OnPropertyChanged(nameof(ActivePageUrl));
-            OnPropertyChanged(nameof(NewVersionDisplay));  // 소스 전환 시 버전 표기 변경
+            OnPropertyChanged(nameof(NewVersionDisplay));  // update version label on source switch
             PrimaryActionCommand.RaiseCanExecuteChanged();
         }
     }
@@ -116,11 +119,11 @@ public class UpdateEntryViewModel : ViewModelBase
     {
         get
         {
-            if (IsNexusUnregistered)         return "Link Nexus";
-            if (Status == UpdateStatus.Done) return "Done";
-            if (Status == UpdateStatus.Downloading || Status == UpdateStatus.Installing)
-                return "...";
-            if (CanAutoDownload) return "Download";
+            if (IsNexusUnregistered)                                      return "Link Nexus";
+            if (Status == UpdateStatus.Retry)                             return "Retry";
+            if (Status == UpdateStatus.Downloading ||
+                Status == UpdateStatus.Applying)                          return "...";
+            if (CanAutoDownload)                                          return "Download";
             return "Open Page";
         }
     }
@@ -162,16 +165,19 @@ public class UpdateEntryViewModel : ViewModelBase
 
     public string StatusColor => Status switch
     {
-        UpdateStatus.Done        => "#4caf50",
+        UpdateStatus.Updated     => "#4caf50",
         UpdateStatus.Failed      => "#f44336",
+        UpdateStatus.Retry       => "#ff9800",
         UpdateStatus.Skipped     => "#888888",
         UpdateStatus.Downloading => "#0078d4",
-        UpdateStatus.Installing  => "#ff9800",
+        UpdateStatus.Applying    => "#ff9800",
         _                        => "#cccccc"
     };
 
     public bool IsActionEnabled =>
-        Status == UpdateStatus.Pending || Status == UpdateStatus.Failed;
+        Status == UpdateStatus.Pending ||
+        Status == UpdateStatus.Failed  ||
+        Status == UpdateStatus.Retry;
 
     // ── Nexus link panel ──────────────────────────────────────────────────
     public bool ShowNexusRegisterPanel => IsNexusUnregistered && _isRegisterExpanded;
@@ -209,6 +215,8 @@ public class UpdateEntryViewModel : ViewModelBase
         try
         {
             string downloadUrl;
+            long   nexusFileId  = 0;
+            string nexusFileName = "";
 
             if (ActiveSource == UpdateSource.MODIO)
             {
@@ -216,7 +224,7 @@ public class UpdateEntryViewModel : ViewModelBase
             }
             else
             {
-                downloadUrl = await GetNexusDownloadUrlAsync();
+                (downloadUrl, nexusFileId, nexusFileName) = await GetNexusDownloadUrlAsync();
             }
 
             if (string.IsNullOrEmpty(downloadUrl))
@@ -226,7 +234,7 @@ public class UpdateEntryViewModel : ViewModelBase
             {
                 StatusText = p.Text;
                 if (p.Percent >= 95)
-                    Status = UpdateStatus.Installing;
+                    Status = UpdateStatus.Applying;
             });
 
             await Downloader.DownloadAndInstallAsync(
@@ -234,11 +242,29 @@ public class UpdateEntryViewModel : ViewModelBase
                 _entry.PakFilePath ?? "",
                 _modsFolder,
                 _backupEnabled,
-                progress);
+                uuid:        _entry.UUID,
+                modId:       _entry.NexusModId ?? 0,
+                fileId:      nexusFileId,
+                fileName:    nexusFileName,
+                fileIdStore: ActiveSource == UpdateSource.NEXUSMODS ? _fileIdStore : null,
+                progress:    progress);
 
-            Status     = UpdateStatus.Done;
-            StatusText = "Done";
+            Status     = UpdateStatus.Updated;
+            StatusText = "Updated";
             Logger.Info($"Download complete: {ModName}");
+        }
+        catch (PakInUseException ex)
+        {
+            Status     = UpdateStatus.Retry;
+            StatusText = "Retry";
+            Logger.Warn($"File in use for {ModName}: {ex.Message}");
+
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
+                MessageBox.Show(
+                    $"Could not overwrite {ex.PakFileName}.\nClose BG3 and click Retry.",
+                    "File In Use",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning));
         }
         catch (OperationCanceledException)
         {
@@ -251,7 +277,7 @@ public class UpdateEntryViewModel : ViewModelBase
             StatusText = "Failed";
             Logger.Error($"Download failed for {ModName}: {ex.Message}");
 
-            Application.Current.Dispatcher.InvokeAsync(() =>
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
                 MessageBox.Show(
                     $"Download failed for {ModName}:\n{ex.Message}",
                     "Download Error",
@@ -273,26 +299,26 @@ public class UpdateEntryViewModel : ViewModelBase
         return file.BinaryUrl;
     }
 
-    private async Task<string> GetNexusDownloadUrlAsync()
+    private async Task<(string url, long fileId, string fileName)> GetNexusDownloadUrlAsync()
     {
         if (_nexusApi == null || _entry.NexusModId == null)
             throw new InvalidOperationException("Nexus API key is not configured, or this mod has no Nexus ID.");
 
-        // Step 1: 최신 파일 메타데이터 (fileId 획득)
+        // Step 1: latest file metadata (get fileId)
         var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value);
         if (latest == null)
             throw new InvalidOperationException(
                 $"Could not retrieve file list for Nexus mod {_entry.NexusModId}.\n" +
                 "(Check logs for the exact server response — 403/429/404)");
 
-        // Step 2: Premium 다운로드 URL (download_link.json)
+        // Step 2: Premium download URL (download_link.json)
         var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.FileId);
         if (string.IsNullOrEmpty(url))
             throw new InvalidOperationException(
                 $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.FileId}).\n" +
                 "(If this persists, verify that your API key has Premium access.)");
 
-        return url;
+        return (url, latest.FileId, latest.Name);
     }
 
     // ── Action dispatch ───────────────────────────────────────────────────
@@ -319,7 +345,7 @@ public class UpdateEntryViewModel : ViewModelBase
         IsNexusUnregistered ||
         (IsActionEnabled &&
          Status != UpdateStatus.Downloading &&
-         Status != UpdateStatus.Installing);
+         Status != UpdateStatus.Applying);
 
     private void ToggleSource()
     {
@@ -353,7 +379,7 @@ public class UpdateEntryViewModel : ViewModelBase
     private void RegisterNexus()
     {
         var input = _nexusUrlInput.Trim();
-        // URL에서 modId 파싱: nexusmods.com/baldursgate3/mods/{modId}
+        // Parse modId from URL: nexusmods.com/baldursgate3/mods/{modId}
         var match = System.Text.RegularExpressions.Regex.Match(
             input, @"nexusmods\.com/[^/]+/mods/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!match.Success || !int.TryParse(match.Groups[1].Value, out var modId))

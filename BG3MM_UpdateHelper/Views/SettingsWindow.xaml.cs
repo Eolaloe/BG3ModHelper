@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Windows;
 using BG3MM_UpdateHelper.Models;
@@ -27,6 +28,9 @@ public partial class SettingsWindow : Window
         ModioKeyBox.Text     = _settings.ModioAPIKey;
         BackupCheckBox.IsChecked = _settings.BackupBeforeUpdate;
         DataFolderText.Text  = SettingsStore.GetDataFolder();
+        DataFolderLink.NavigateUri    = new Uri(SettingsStore.GetDataFolder());
+        ApiKeyFolderText.Text        = System.IO.Path.Combine(SettingsStore.GetDataFolder(), "settings.json");
+        ApiKeyFolderLink.NavigateUri = new Uri(System.IO.Path.Combine(SettingsStore.GetDataFolder(), "settings.json"));
     }
 
     private void BrowseBG3MM_Click(object sender, RoutedEventArgs e)
@@ -76,19 +80,31 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void NexusLink_Click(object sender, RoutedEventArgs e) =>
-        NexusLinkRequested?.Invoke(this, EventArgs.Empty);
-
-    public event EventHandler? NexusLinkRequested;
-
-    public void SetNexusStatus(string status, bool linked)
+    private void DataFolder_RequestNavigate(object sender,
+        System.Windows.Navigation.RequestNavigateEventArgs e)
     {
-        NexusLinkStatus.Text = status;
-        NexusLinkStatus.Foreground = linked
-            ? new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x2e, 0x7d, 0x32))
-            : new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88));
+        try { System.Diagnostics.Process.Start("explorer.exe", SettingsStore.GetDataFolder()); }
+        catch { /* ignored */ }
+        e.Handled = true;
+    }
+
+    private void ApiKeyFile_RequestNavigate(object sender,
+        System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(SettingsStore.GetDataFolder(), "settings.json");
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+        }
+        catch { /* ignored */ }
+        e.Handled = true;
+    }
+
+    private void Hyperlink_RequestNavigate(object sender,
+        System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        OpenUrl(e.Uri.AbsoluteUri);
+        e.Handled = true;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)

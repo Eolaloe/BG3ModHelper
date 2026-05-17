@@ -1,5 +1,0 @@
-<Project>
-    <PropertyGroup>
-        <BaseIntermediateOutputPath>$(SolutionDir)obj\Toolbox\</BaseIntermediateOutputPath>
-    </PropertyGroup>
-</Project>

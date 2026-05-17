@@ -16,11 +16,10 @@
 
         <StackPanel Grid.Row="0">
 
-                <!-- Paths -->
                 <GroupBox Header="Paths" Margin="0,0,0,12">
                     <StackPanel Margin="8">
                         <TextBlock Text="BG3MM Folder" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <Grid Margin="0,0,0,12">
+                        <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -30,6 +29,13 @@
                             <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Padding="12,4"
                                     Click="BrowseBG3MM_Click"/>
                         </Grid>
+                        <TextBlock Foreground="Gray" FontSize="11" Margin="0,0,0,12">
+                            <Run Text="Don't have BG3MM? "/>
+                            <Hyperlink NavigateUri="https://github.com/LaughingLeader/BG3ModManager/releases/latest"
+                                       RequestNavigate="Hyperlink_RequestNavigate">
+                                <Run Text="Download here."/>
+                            </Hyperlink>
+                        </TextBlock>
 
                         <TextBlock Text="Mods Folder" FontWeight="SemiBold" Margin="0,0,0,4"/>
                         <Grid>
@@ -71,27 +77,16 @@
                             <Button Grid.Column="1" Content="Get API Key" Margin="6,0,0,0" Padding="12,4"
                                     Click="OpenModioKeyPage_Click"/>
                         </Grid>
-                    </StackPanel>
-                </GroupBox>
-
-                <!-- Nexus Account -->
-                <GroupBox Header="Nexus Account" Margin="0,0,0,12">
-                    <StackPanel Margin="8">
-                        <TextBlock TextWrapping="Wrap" Foreground="#444444" Margin="0,0,0,8"
-                                   Text="Link your Nexus account to enable automatic mod matching and community DB contributions."/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" x:Name="NexusLinkButton"
-                                    Content="Link Nexus Account"
-                                    Padding="12,5" Background="#d98200" Foreground="White"
-                                    BorderThickness="0" Click="NexusLink_Click"/>
-                            <TextBlock Grid.Column="1" x:Name="NexusLinkStatus"
-                                       VerticalAlignment="Center" Margin="10,0,0,0"
-                                       Foreground="#888888" FontSize="12"/>
-                        </Grid>
+                        <TextBlock TextWrapping="Wrap" Foreground="#888888" FontSize="11" Margin="0,8,0,0">
+                            <Run Text="API keys are stored in plain text at:"/>
+                            <LineBreak/>
+                            <Hyperlink x:Name="ApiKeyFolderLink"
+                                       RequestNavigate="ApiKeyFile_RequestNavigate">
+                                <Run x:Name="ApiKeyFolderText"/>
+                            </Hyperlink>
+                            <LineBreak/>
+                            <Run Text="Do not share your settings.json or expose your API keys publicly."/>
+                        </TextBlock>
                     </StackPanel>
                 </GroupBox>
 
@@ -110,11 +105,23 @@
                     <StackPanel Margin="8">
                         <TextBlock>
                             <Run Text="Version: " FontWeight="SemiBold"/>
-                            <Run Text="0.1.0 (Phase 1)"/>
+                            <Run Text="0.9.0"/>
+                        </TextBlock>
+                        <TextBlock Margin="0,4,0,0">
+                            <Run Text="Developed by " FontWeight="SemiBold"/>
+                            <Run Text="Eolaloe"/>
+                            <Run Text=" — "/>
+                            <Hyperlink NavigateUri="https://www.nexusmods.com/profile/Eolaloe"
+                                       RequestNavigate="Hyperlink_RequestNavigate">
+                                <Run Text="Nexus"/>
+                            </Hyperlink>
                         </TextBlock>
                         <TextBlock Margin="0,4,0,0">
                             <Run Text="Data folder: " FontWeight="SemiBold"/>
-                            <Run x:Name="DataFolderText"/>
+                            <Hyperlink x:Name="DataFolderLink"
+                                       RequestNavigate="DataFolder_RequestNavigate">
+                                <Run x:Name="DataFolderText"/>
+                            </Hyperlink>
                         </TextBlock>
                     </StackPanel>
                 </GroupBox>

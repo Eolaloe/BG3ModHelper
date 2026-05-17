@@ -12,15 +12,17 @@ public class UpdateNotificationViewModel : ViewModelBase
     private readonly bool      _backupEnabled;
     private readonly ModioApi? _modioApi;
     private readonly NexusApi? _nexusApi;
+    private readonly ModFileIdStore? _fileIdStore;
     private readonly Func<Task<List<ModUpdateEntry>>>? _reloadFunc;
 
     public UpdateNotificationViewModel(
         List<ModUpdateEntry> updates,
         bool nexusIsPremium,
         string modsFolder,
-        bool backupEnabled  = false,
-        ModioApi? modioApi  = null,
-        NexusApi? nexusApi  = null,
+        bool backupEnabled                = false,
+        ModioApi? modioApi                = null,
+        NexusApi? nexusApi                = null,
+        ModFileIdStore? fileIdStore       = null,
         Func<Task<List<ModUpdateEntry>>>? reloadFunc = null)
     {
         _nexusIsPremium = nexusIsPremium;
@@ -28,12 +30,13 @@ public class UpdateNotificationViewModel : ViewModelBase
         _backupEnabled  = backupEnabled;
         _modioApi       = modioApi;
         _nexusApi       = nexusApi;
+        _fileIdStore    = fileIdStore;
         _reloadFunc     = reloadFunc;
 
         Entries = new ObservableCollection<UpdateEntryViewModel>(
             updates.Select(u =>
             {
-                var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi);
+                var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore);
                 vm.DownloadRequested += OnDownloadRequested;
                 vm.NexusRegistered   += OnNexusRegistered;
                 return vm;
@@ -111,18 +114,18 @@ public class UpdateNotificationViewModel : ViewModelBase
             var newUpdates = await _reloadFunc();
             var newDict    = newUpdates.ToDictionary(u => u.UUID);
 
-            // 새 업데이트 목록에 없는 항목 제거 (완료됐거나 이미 최신인 것)
+            // Remove entries no longer in the new update list
             var toRemove = Entries
                 .Where(e => !newDict.ContainsKey(e.UUID))
                 .ToList();
             foreach (var e in toRemove) Entries.Remove(e);
 
-            // 신규 항목 추가
+            // Add new entries
             var existing = Entries.Select(e => e.UUID).ToHashSet();
             foreach (var u in newUpdates.Where(u => !existing.Contains(u.UUID)))
             {
                 var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
-                    _backupEnabled, _modioApi, _nexusApi);
+                    _backupEnabled, _modioApi, _nexusApi, _fileIdStore);
                 vm.DownloadRequested += OnDownloadRequested;
                 vm.NexusRegistered   += OnNexusRegistered;
                 Entries.Add(vm);
@@ -170,7 +173,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         DownloadSelectedCommand.RaiseCanExecuteChanged();
 
         // Summary popup
-        var succeeded = selected.Count(e => e.Status == UpdateStatus.Done);
+        var succeeded = selected.Count(e => e.Status == UpdateStatus.Updated);
         var failed    = selected.Count(e => e.Status == UpdateStatus.Failed);
         var msg       = $"{succeeded}/{selected.Count} mods updated successfully.";
         if (failed > 0) msg += $"\n{failed} failed — check Recent Activity for details.";
@@ -198,7 +201,7 @@ public class UpdateNotificationViewModel : ViewModelBase
     {
         var total       = Entries.Count;
         var autoCount   = Entries.Count(e => e.CanAutoDownload && e.IsActionEnabled);
-        var doneCount   = Entries.Count(e => e.Status == UpdateStatus.Done);
+        var doneCount   = Entries.Count(e => e.Status == UpdateStatus.Updated);
         var manualCount = Entries.Count(e => !e.CanAutoDownload && !e.IsNexusUnregistered);
         var unregCount  = Entries.Count(e => e.IsNexusUnregistered);
 

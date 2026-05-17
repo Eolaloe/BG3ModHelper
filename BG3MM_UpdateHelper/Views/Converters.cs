@@ -14,7 +14,7 @@ public class BoolToVisibilityConverter : IValueConverter
         => value is Visibility.Visible;
 }
 
-/// <summary>bool → bool (반전)</summary>
+/// <summary>bool → bool (inverted)</summary>
 public class InverseBoolConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -24,7 +24,7 @@ public class InverseBoolConverter : IValueConverter
         => value is false;
 }
 
-/// <summary>string key → Style (App.xaml Resources에서 찾음)</summary>
+/// <summary>string key → Style (resolved from App.xaml Resources)</summary>
 public class StyleKeyConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

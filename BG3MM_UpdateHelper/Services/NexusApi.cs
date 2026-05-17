@@ -2,7 +2,6 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using BG3MM_UpdateHelper.Models;
-using BG3MM_UpdateHelper.Models.Cache;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -27,26 +26,22 @@ public class NexusApi
     public int HourlyRemaining { get; private set; } = 100;
     public int DailyRemaining  { get; private set; } = 2500;
 
-    // Cache file path
-    private static readonly string CacheFilePath = Path.Combine(
-        SettingsStore.GetDataFolder(), "nexusdata.json");
-
     public NexusApi(string apiKey)
     {
         _apiKey = apiKey;
     }
 
     /// <summary>
-    /// 동일 API key를 가진 새 인스턴스 반환. rate limit 카운터는 초기값(100/2500)으로 리셋.
-    /// 다운로드 직전에 호출하면 CheckUpdates에서 소진된 rate limit의 영향을 받지 않음.
+    /// Returns a new instance with the same API key. Rate limit counters reset to defaults.
+    /// Calling just before download avoids inheriting rate limit state from CheckUpdates.
     /// </summary>
     public NexusApi Clone() => new NexusApi(_apiKey);
 
     /// <summary>
     /// True when the API key is set.
-    /// Rate limit은 서버(Nexus)가 직접 관리 — 앱이 내부 카운터로 선제 차단하면
-    /// 서버는 아직 허용하는데 다운로드가 막히는 역효과 발생.
-    /// 서버가 한도 초과 시 429를 반환하면 GetAsync에서 null로 처리.
+    /// Rate limits are managed server-side. Pre-blocking via internal counters causes
+    /// downloads to fail even when the server would still allow them.
+    /// A 429 from the server is handled in GetAsync by returning null.
     /// </summary>
     public bool CanMakeRequest() =>
         !string.IsNullOrWhiteSpace(_apiKey);
@@ -80,33 +75,6 @@ public class NexusApi
         }
     }
 
-    /// <summary>Fetches metadata for one mod by its Nexus mod ID.</summary>
-    public async Task<NexusModData?> GetModInfoAsync(int modId)
-    {
-        var json = await GetAsync($"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}.json");
-        if (json == null) return null;
-
-        try
-        {
-            var obj = JObject.Parse(json);
-            return new NexusModData
-            {
-                ModId      = obj["mod_id"]?.Value<int>() ?? modId,
-                Name       = obj["name"]?.Value<string>() ?? "",
-                Summary    = obj["summary"]?.Value<string>() ?? "",
-                Version    = obj["version"]?.Value<string>() ?? "",
-                ProfileUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}",
-                UpdatedAt  = DateTimeOffset
-                    .FromUnixTimeSeconds(obj["updated_timestamp"]?.Value<long>() ?? 0)
-                    .UtcDateTime
-            };
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"NexusApi.GetModInfoAsync({modId}) parse error: {ex.Message}");
-            return null;
-        }
-    }
 
     /// <summary>
     /// Returns the latest MAIN file for a mod.
@@ -165,7 +133,7 @@ public class NexusApi
             var files = JObject.Parse(json)["files"] as JArray;
             if (files == null) return new();
 
-            // is_primary 우선, 없으면 MAIN, 없으면 최신
+            // Prefer is_primary; fall back to MAIN; then most recent
             var target = files.FirstOrDefault(f => f["is_primary"]?.Value<bool>() == true)
                       ?? files.FirstOrDefault(f =>
                              string.Equals(f["category_name"]?.Value<string>(),
@@ -177,7 +145,7 @@ public class NexusApi
             var previewUrl = target?["content_preview_link"]?.Value<string>();
             if (string.IsNullOrEmpty(previewUrl)) return new();
 
-            // file-metadata는 인증 불필요
+            // file-metadata requires no authentication
             using var http   = new System.Net.Http.HttpClient();
             var metaResponse = await http.GetStringAsync(previewUrl);
             var children     = JObject.Parse(metaResponse)["children"] as JArray;
@@ -220,33 +188,6 @@ public class NexusApi
         }
     }
 
-    // ── Cache helpers ─────────────────────────────────────────────────────
-
-    public static NexusCachedData LoadCache()
-    {
-        if (!File.Exists(CacheFilePath)) return new NexusCachedData();
-        try
-        {
-            var json = File.ReadAllText(CacheFilePath);
-            return JsonConvert.DeserializeObject<NexusCachedData>(json)
-                   ?? new NexusCachedData();
-        }
-        catch { return new NexusCachedData(); }
-    }
-
-    public static void SaveCache(NexusCachedData cache)
-    {
-        try
-        {
-            var json = JsonConvert.SerializeObject(cache, Formatting.Indented);
-            File.WriteAllText(CacheFilePath, json);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"NexusApi.SaveCache error: {ex.Message}");
-        }
-    }
-
     // ── HTTP internals ────────────────────────────────────────────────────
 
     /// <summary>
@@ -269,6 +210,8 @@ public class NexusApi
 
             request.Headers.Add("apikey", _apiKey);
             request.Headers.Add("User-Agent", "BG3MM_UpdateHelper/0.1");
+            request.Headers.Add("Application-Name", "BG3MM_UpdateHelper");
+            request.Headers.Add("Application-Version", "0.1.0");
             request.Headers.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -333,7 +276,7 @@ public class NexusApi
             DailyRemaining = d;
         }
 
-        // 값이 바뀔 때만 로그 — 병렬 호출 시 동일 값 수백 번 찍히는 스팸 방지
+        // Only log on change — prevents spam during parallel calls
         if (HourlyRemaining <= 5 && HourlyRemaining != prevHourly)
             Logger.Warn($"NexusApi: hourly rate limit low ({HourlyRemaining} remaining)");
         if (DailyRemaining <= 10 && DailyRemaining != prevDaily)

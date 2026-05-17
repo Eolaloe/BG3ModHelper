@@ -49,9 +49,7 @@
         <Style x:Key="RegisterActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
             <Setter Property="Background" Value="#888888"/>
         </Style>
-
-        <!-- 소스 ⇄ 전환 버튼 스타일 -->
-        <Style x:Key="SwitchButton" TargetType="Button">
+<Style x:Key="SwitchButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#cccccc"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -75,9 +73,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
-
-        <!-- 모드 이름 링크 버튼 스타일 -->
-        <Style x:Key="ModNameButton" TargetType="Button">
+<Style x:Key="ModNameButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
@@ -108,52 +104,40 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="30"/>    <!-- checkbox -->
-                            <ColumnDefinition Width="*"/>     <!-- name (링크) -->
-                            <ColumnDefinition Width="80"/>    <!-- current ver -->
+                            <ColumnDefinition Width="*"/>
+<ColumnDefinition Width="80"/>    <!-- current ver -->
                             <ColumnDefinition Width="20"/>    <!-- arrow -->
                             <ColumnDefinition Width="80"/>    <!-- new ver -->
                             <ColumnDefinition Width="100"/>   <!-- source + switch (80→100) -->
                             <ColumnDefinition Width="100"/>   <!-- action -->
                             <ColumnDefinition Width="75"/>    <!-- status -->
                         </Grid.ColumnDefinitions>
-
-                        <!-- 체크박스 -->
-                        <CheckBox Grid.Column="0"
+<CheckBox Grid.Column="0"
                                   IsChecked="{Binding IsSelected, Mode=TwoWay}"
                                   VerticalAlignment="Center"
                                   IsEnabled="{Binding CanAutoDownload}"/>
-
-                        <!-- 모드 이름 — 클릭 시 해당 소스 페이지로 이동 -->
-                        <Button Grid.Column="1"
+<Button Grid.Column="1"
                                 Content="{Binding ModName}"
                                 ToolTip="{Binding ActivePageUrl}"
                                 Style="{StaticResource ModNameButton}"
                                 Command="{Binding OpenPageCommand}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,8,0"/>
-
-                        <!-- 현재 버전 -->
-                        <TextBlock Grid.Column="2"
+<TextBlock Grid.Column="2"
                                    Text="{Binding CurrentVersion}"
                                    VerticalAlignment="Center" HorizontalAlignment="Right"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="0,0,2,0"/>
-
-                        <!-- 화살표 -->
-                        <TextBlock Grid.Column="3"
+<TextBlock Grid.Column="3"
                                    Text="→"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"
                                    FontSize="11" Foreground="#888888"/>
-
-                        <!-- 새 버전 — ActiveSource에 따라 해당 소스 버전 표시 -->
-                        <TextBlock Grid.Column="4"
+<TextBlock Grid.Column="4"
                                    Text="{Binding NewVersionDisplay}"
                                    VerticalAlignment="Center" HorizontalAlignment="Left"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="2,0,0,0"/>
-
-                        <!-- 소스 배지 중앙 고정 + ⇄ 우측 고정 -->
-                        <Grid Grid.Column="5">
+<Grid Grid.Column="5">
                             <Border MinWidth="44" HorizontalAlignment="Center" VerticalAlignment="Center"
                                     CornerRadius="3" Padding="4,1">
                                 <Border.Background>
@@ -163,8 +147,7 @@
                                            Foreground="White" FontSize="10" FontWeight="SemiBold"
                                            TextAlignment="Center"/>
                             </Border>
-                            <!-- ⇄ 버튼: 항상 우측 끝, 배지 위치에 영향 없음 -->
-                            <Button Content="⇄"
+<Button Content="⇄"
                                     Style="{StaticResource SwitchButton}"
                                     Command="{Binding ToggleSourceCommand}"
                                     Visibility="{Binding HasMultipleSources, Converter={StaticResource BoolToVisibilityConverter}}"
@@ -172,25 +155,19 @@
                                     Width="22" Margin="0,0,2,0"
                                     ToolTip="Switch source"/>
                         </Grid>
-
-                        <!-- 액션 버튼 -->
-                        <Button Grid.Column="6"
+<Button Grid.Column="6"
                                 Content="{Binding ActionLabel}"
                                 Style="{Binding ActionStyle, Converter={StaticResource StyleKeyConverter}}"
                                 Command="{Binding PrimaryActionCommand}"
                                 IsEnabled="{Binding IsActionEnabled}"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
-
-                        <!-- 상태 -->
-                        <TextBlock Grid.Column="7"
+<TextBlock Grid.Column="7"
                                    Text="{Binding StatusText}"
                                    Foreground="{Binding StatusColor}"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"
                                    FontSize="11"/>
                     </Grid>
-
-                    <!-- Nexus 등록 패널 (미링크 모드용) -->
-                    <StackPanel Margin="30,6,0,2"
+<StackPanel Margin="30,6,0,2"
                                 Visibility="{Binding ShowNexusRegisterPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock Text="Paste the Nexus mod page URL to link it. This will be shared with the community."
                                    FontSize="11" Foreground="#666666" Margin="0,0,0,4" TextWrapping="Wrap"/>
@@ -222,17 +199,13 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <!-- 타이틀 + 요약 -->
-        <Border Grid.Row="0" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="16,10">
+<Border Grid.Row="0" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="16,10">
             <StackPanel>
                 <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
             </StackPanel>
         </Border>
-
-        <!-- 컬럼 헤더 -->
-        <Border Grid.Row="1" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5,25,5">
+<Border Grid.Row="1" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5,25,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="30"/>
@@ -251,20 +224,14 @@
                 <TextBlock Grid.Column="7" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
             </Grid>
         </Border>
-
-        <!-- 목록 -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Visible">
+<ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Visible">
             <ItemsControl ItemsSource="{Binding Entries}"/>
         </ScrollViewer>
-
-        <!-- Busy 인디케이터 -->
-        <Border Grid.Row="3" Padding="16,6" Background="#fff8e1" BorderBrush="#ffe082" BorderThickness="0,1,0,0"
+<Border Grid.Row="3" Padding="16,6" Background="#fff8e1" BorderBrush="#ffe082" BorderThickness="0,1,0,0"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
             <TextBlock Text="{Binding BusyText}" FontSize="12" Foreground="#555500"/>
         </Border>
-
-        <!-- 푸터 -->
-        <Border Grid.Row="4" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,1,0,0" Padding="16,10">
+<Border Grid.Row="4" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,1,0,0" Padding="16,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

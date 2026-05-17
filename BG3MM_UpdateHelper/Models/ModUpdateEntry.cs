@@ -7,11 +7,14 @@ public class ModUpdateEntry
     public int?   NexusModId     { get; set; }
     public string ModName        { get; set; } = "";
     public string CurrentVersion { get; set; } = "";
-    public string NewVersion     { get; set; } = "";  // 더 높은 쪽 (표시 fallback)
+    public string NewVersion     { get; set; } = "";  // higher of the two (display fallback)
 
-    // 소스별 버전 — 소스 전환 시 버전 표기 변경에 사용
+    // Per-source versions — used when switching active source
     public string ModioNewVersion { get; set; } = "";
     public string NexusNewVersion { get; set; } = "";
+
+    // Recorded after download for accurate update detection (spec §4.11)
+    public long NexusFileId { get; set; }
 
     public UpdateSource        DefaultSource    { get; set; }
     public List<UpdateSource>  AvailableSources { get; set; } = new();
@@ -31,8 +34,9 @@ public enum UpdateStatus
 {
     Pending,
     Downloading,
-    Installing,
-    Done,
+    Applying,
+    Updated,
     Failed,
+    Retry,
     Skipped
 }

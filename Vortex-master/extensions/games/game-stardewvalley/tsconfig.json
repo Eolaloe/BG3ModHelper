@@ -1,9 +1,0 @@
-{
-  "$schema": "https://www.schemastore.org/tsconfig.json",
-  "extends": "../../tsconfig.extensions.json",
-  "compilerOptions": {
-    "strictNullChecks": true,
-    "noUncheckedIndexedAccess": true
-  },
-  "include": ["src"]
-}

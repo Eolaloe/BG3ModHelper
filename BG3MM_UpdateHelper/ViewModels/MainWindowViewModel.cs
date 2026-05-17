@@ -25,7 +25,8 @@ public class MainWindowViewModel : ViewModelBase
     private bool   _progressIndeterminate = false;
 
     private List<InstalledMod> _installedMods = new();
-    private readonly NexusIdDatabase _nexusIdDb  = new();
+    private readonly NexusIdDatabase _nexusIdDb   = new();
+    private readonly ModFileIdStore  _fileIdStore = new();
 
     public MainWindowViewModel(Window ownerWindow)
     {
@@ -42,6 +43,7 @@ public class MainWindowViewModel : ViewModelBase
         RecentActivities = new ObservableCollection<string>();
         AddActivity("Application started");
 
+        _fileIdStore.Load();
         _ = RefreshModsAsync();
     }
 
@@ -153,7 +155,7 @@ public class MainWindowViewModel : ViewModelBase
     {
         if (_isScanning) return;
 
-        // 항상 재스캔 — 설치/업데이트 후 최신 버전 반영
+        // Always rescan — picks up newly installed versions
         await RefreshModsAsync();
         if (_installedMods.Count == 0)
         {
@@ -163,39 +165,9 @@ public class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        // NexusIdDatabase 초기화 (GitHub DB 동기화, 12h 캐시)
+        // Initialize NexusIdDatabase (sync from GitHub, 12h cache)
         StatusText = "Syncing Nexus mod database...";
         await _nexusIdDb.InitAsync();
-
-        // 24시간마다 Nexus 히스토리 수집
-        if (DateTime.UtcNow - _settings.LastNexusHistorySync > TimeSpan.FromHours(24)
-            && !string.IsNullOrWhiteSpace(_settings.NexusAPIKey))
-        {
-            StatusText = "Syncing Nexus download history...";
-            Logger.Info("CheckUpdates: starting Nexus history sync");
-            try
-            {
-                var history = await NexusWebLogin.LoginAndFetchHistoryAsync(_ownerWindow);
-                if (history != null)
-                {
-                    var nexusForDb = new NexusApi(_settings.NexusAPIKey);
-                    var histProg   = new Progress<(int done, int total)>(p =>
-                        StatusText = $"Matching Nexus mods... ({p.done}/{p.total})");
-                    var matched = await _nexusIdDb.SyncFromHistoryAsync(
-                        history, _installedMods, nexusForDb, histProg);
-                    if (matched > 0)
-                        AddActivity($"Nexus: {matched} new mod(s) linked");
-                    _settings.LastNexusHistorySync = DateTime.UtcNow;
-                    SettingsStore.Save(_settings);
-                }
-            }
-            catch (Exception ex) { Logger.Warn($"Nexus history sync failed: {ex.Message}"); }
-        }
-
-        // InstalledMod에 NexusModId 주입 (DB에서 조회)
-        foreach (var mod in _installedMods)
-            if (!mod.NexusModId.HasValue)
-                mod.NexusModId = _nexusIdDb.GetNexusModId(mod.UUID);
 
         var hasNexus = !string.IsNullOrWhiteSpace(_settings.NexusAPIKey);
         var hasModio = !string.IsNullOrWhiteSpace(_settings.ModioAPIKey);
@@ -232,11 +204,7 @@ public class MainWindowViewModel : ViewModelBase
                 }
             }
 
-            // Switch to determinate once we know how many mods to check
-            ProgressIsIndeterminate = false;
-            ProgressMax             = _installedMods.Count;
-            ProgressValue           = 0;
-            StatusText              = "Querying mod.io and Nexus Mods...";
+            StatusText = "Checking for updates...";
 
             var nexusApi = hasNexus ? new NexusApi(_settings.NexusAPIKey) : null;
             var modioApi = hasModio ? new ModioApi(_settings.ModioAPIKey) : null;
@@ -251,8 +219,9 @@ public class MainWindowViewModel : ViewModelBase
                 _installedMods,
                 nexusApi,
                 modioApi,
+                _nexusIdDb,
+                _fileIdStore,
                 _settings.NexusIsPremium,
-                _settings.CacheExpiryHours,
                 progress);
 
             _lastCheck = DateTime.Now;
@@ -271,18 +240,37 @@ public class MainWindowViewModel : ViewModelBase
             AddActivity(updates.Count + " update(s) available");
             Logger.Info(updates.Count + " updates found");
 
-            // Phase 6: 업데이트 알림 창 열기
+            // Phase 6: open update notification window
             var breakdown = new List<string>();
             var modioCount = updates.Count(u => u.AvailableSources.Contains(UpdateSource.MODIO));
             var nexusCount = updates.Count(u => u.AvailableSources.Contains(UpdateSource.NEXUSMODS));
-            if (modioCount > 0) breakdown.Add("mod.io: " + modioCount + "개");
-            if (nexusCount > 0) breakdown.Add("Nexus: " + nexusCount + "개");
+            if (modioCount > 0) breakdown.Add("mod.io: " + modioCount + " mod(s)");
+            if (nexusCount > 0) breakdown.Add("Nexus: " + nexusCount + " mod(s)");
             if (breakdown.Count > 0)
-                AddActivity("  " + string.Join(", ", breakdown));
+                AddActivity(string.Join(", ", breakdown));
 
             var folder   = !string.IsNullOrEmpty(_settings.ModsFolderPath)
                 ? _settings.ModsFolderPath
                 : PathDiscovery.GetDefaultModsFolder();
+
+            // reloadFunc: rescan mods then re-run update check
+            Func<Task<List<ModUpdateEntry>>> reloadFunc = async () =>
+            {
+                var rFolder = !string.IsNullOrEmpty(_settings.ModsFolderPath)
+                    ? _settings.ModsFolderPath
+                    : PathDiscovery.GetDefaultModsFolder();
+                _installedMods = await ModScanner.ScanAsync(rFolder);
+
+                var rNexusApi = hasNexus ? new NexusApi(_settings.NexusAPIKey) : null;
+                var rModioApi = hasModio ? new ModioApi(_settings.ModioAPIKey) : null;
+                return await UpdateChecker.CheckAsync(
+                    _installedMods,
+                    rNexusApi,
+                    rModioApi,
+                    _nexusIdDb,
+                    _fileIdStore,
+                    _settings.NexusIsPremium);
+            };
 
             var notificationVm = new UpdateNotificationViewModel(
                 updates,
@@ -290,12 +278,14 @@ public class MainWindowViewModel : ViewModelBase
                 folder,
                 _settings.BackupBeforeUpdate,
                 hasModio ? new ModioApi(_settings.ModioAPIKey) : null,
-                hasNexus ? new NexusApi(_settings.NexusAPIKey) : null);
+                hasNexus ? new NexusApi(_settings.NexusAPIKey) : null,
+                _fileIdStore,
+                reloadFunc);
 
             notificationVm.NexusMappingAdded += (uuid, modId, fileId) =>
             {
                 AddActivity("Nexus linked: mod_id=" + modId);
-                // TODO Phase 8: NexusIdDatabase 저장 + Vercel 기여
+                // TODO Phase 8: save NexusIdDatabase + Vercel contribution
             };
 
             var window = new Views.UpdateNotificationWindow(notificationVm)
@@ -313,8 +303,10 @@ public class MainWindowViewModel : ViewModelBase
         }
         finally
         {
-            IsScanning = false;
-            StatusText = "";
+            IsScanning              = false;
+            ProgressIsIndeterminate = false;
+            ProgressValue           = 0;
+            StatusText              = "";
         }
     }
 
@@ -347,40 +339,13 @@ public class MainWindowViewModel : ViewModelBase
     {
         var dialog = new SettingsWindow(_settings) { Owner = _ownerWindow };
 
-        // 초기 연동 상태 표시
-        var isLinked = _settings.LastNexusHistorySync > DateTime.MinValue;
-        dialog.SetNexusStatus(
-            isLinked
-                ? $"✓ Linked  ({_settings.LastNexusHistoryCount} mods · last sync: {_settings.LastNexusHistorySync.ToLocalTime():MM/dd HH:mm})"
-                : "Not linked",
-            isLinked);
-
-        dialog.NexusLinkRequested += async (_, _) =>
-        {
-            dialog.SetNexusStatus("Connecting...", false);
-            try
-            {
-                var history = await NexusWebLogin.LoginAndFetchHistoryAsync(dialog);
-                if (history != null)
-                {
-                    dialog.SetNexusStatus($"✓ Linked  ({history.Count} mods in history)", true);
-                    _settings.LastNexusHistorySync  = DateTime.UtcNow;
-                    _settings.LastNexusHistoryCount = history.Count;
-                    SettingsStore.Save(_settings);
-                }
-                else
-                    dialog.SetNexusStatus("Cancelled", false);
-            }
-            catch (Exception ex)
-            {
-                dialog.SetNexusStatus("Failed", false);
-                Logger.Warn($"Settings Nexus link: {ex.Message}");
-            }
-        };
-
         if (dialog.ShowDialog() != true) return;
 
         _settings = SettingsStore.Load();
+
+        if (!LibraryLoader.IsInitialized && !string.IsNullOrEmpty(_settings.BG3MMFolderPath))
+            LibraryLoader.Initialize(_settings.BG3MMFolderPath);
+
         OnPropertyChanged(nameof(BG3MMFolderPath));
         OnPropertyChanged(nameof(ModsFolderDisplay));
         AddActivity("Settings updated");
@@ -391,13 +356,17 @@ public class MainWindowViewModel : ViewModelBase
     {
         MessageBox.Show(
             "BG3MM_UpdateHelper\n\n" +
-            "A companion tool for BG3ModManager that checks for mod updates\n" +
+            "A companion tool for BG3ModManager that checks for mod updates " +
             "on Nexus Mods and mod.io, and downloads them automatically.\n\n" +
             "How to use:\n" +
             "1. Configure your BG3MM folder and API keys in Settings\n" +
             "2. Click [Check for Updates]\n" +
             "3. Select mods to update and click Download\n" +
-            "4. Launch BG3MM to load the updated mods",
+            "4. Launch BG3MM to load the updated mods\n\n" +
+            "Notes:\n" +
+            "- mod.io: auto-download available for all users\n" +
+            "- Nexus Premium: auto-download supported\n" +
+            "- Nexus Free: mod page opens for manual download",
             "Help", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -444,6 +413,10 @@ public class MainWindowViewModel : ViewModelBase
 
             _installedMods      = await ModScanner.ScanAsync(folder, progress);
             _installedModsCount = _installedMods.Count;
+
+            // Remove fileId records for mods no longer installed
+            _fileIdStore.PruneOrphans(
+                _installedMods.Select(m => m.UUID).ToHashSet(StringComparer.OrdinalIgnoreCase));
 
             var modioCount = _installedMods.Count(m => m.PublishHandle != 0);
             AddActivity("Scan complete -- " + _installedModsCount +

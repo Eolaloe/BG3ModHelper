@@ -1,1 +1,0 @@
-# extension-modtype-bepinex

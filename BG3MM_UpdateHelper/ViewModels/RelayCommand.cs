@@ -27,7 +27,7 @@ public class RelayCommand : ICommand
             CommandManager.InvalidateRequerySuggested);
 }
 
-/// <summary>파라미터를 받는 제네릭 RelayCommand.</summary>
+/// <summary>Generic RelayCommand that accepts a parameter.</summary>
 public class RelayCommand<T> : ICommand
 {
     private readonly Action<T?> _execute;
