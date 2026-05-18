@@ -53,6 +53,20 @@ public class MainWindowViewModel : ViewModelBase
         _historyStore.Load();
         InitFolderWatcher();
         _ = RefreshModsAsync();
+
+        // Register nxm download handler — must be after _historyStore.Load()
+        NxmDownloadQueue.Instance.SetHandler(HandleNxmItemAsync);
+        NxmDownloadQueue.Instance.OnQueued += (url, size) =>
+        {
+            var label = size > 1
+                ? $"Queued: mod={url.ModId} file={url.FileId} (+{size - 1} already waiting)"
+                : $"Queued: mod={url.ModId} file={url.FileId}";
+            AddActivity(label);
+        };
+
+        // Check nxm handler status on startup (after UI is ready)
+        Application.Current.Dispatcher.InvokeAsync(CheckNxmHandler,
+            System.Windows.Threading.DispatcherPriority.Background);
     }
 
     // === Display properties ===
@@ -169,6 +183,9 @@ public class MainWindowViewModel : ViewModelBase
     private async Task CheckUpdatesAsync()
     {
         if (_isScanning) return;
+
+        // Check nxm handler status before proceeding
+        CheckNxmHandler();
 
         // Always rescan — picks up newly installed versions
         await RefreshModsAsync();
@@ -351,6 +368,7 @@ public class MainWindowViewModel : ViewModelBase
 
     private void OpenSettings()
     {
+        CheckNxmHandler();
         var dialog = new SettingsWindow(_settings, this) { Owner = _ownerWindow };
 
         if (dialog.ShowDialog() != true) return;
@@ -418,6 +436,9 @@ public class MainWindowViewModel : ViewModelBase
         };
         _compactWindow.Show();
         _ownerWindow.Hide();
+
+        _settings.LastModeIsCompact = true;
+        SettingsStore.Save(_settings);
     }
 
     private void ExitCompact()
@@ -426,6 +447,9 @@ public class MainWindowViewModel : ViewModelBase
         _compactWindow = null;
         _ownerWindow.Show();
         _ownerWindow.Activate();
+
+        _settings.LastModeIsCompact = false;
+        SettingsStore.Save(_settings);
     }
 
     public void NotifyCompactOpacityChanged() => OnPropertyChanged(nameof(CompactOpacity));
@@ -714,6 +738,52 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
+    // === nxm handler check ===
+
+    /// <summary>
+    /// Checks if the nxm:// handler has been taken over by another manager.
+    /// Called on startup, Settings open, and Check for Updates.
+    /// </summary>
+    public void CheckNxmHandler()
+    {
+        var settings = _settings;
+        if (!settings.NxmHandlerEnabled) return;
+        if (NxmHandler.IsRegisteredToSelf()) return;
+
+        // Handler was taken over — show dialog
+        var current    = NxmHandler.ReadCurrentCommand() ?? "";
+        var exe        = NxmHandler.ExtractExePath(current);
+        var name       = string.IsNullOrEmpty(exe)
+            ? "another application"
+            : System.IO.Path.GetFileNameWithoutExtension(exe);
+
+        Logger.Warn($"NxmHandler: taken over by {name}");
+
+        var result = MessageBox.Show(
+            $"{name} has taken over the nxm:// handler.\n\n" +
+            "BG3 'Download with Manager' links will no longer reach this app.\n\n" +
+            "Re-register this app as the primary handler?",
+            "nxm:// Handler Conflict",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            // Add the new intruder to KnownHandlers before overwriting
+            if (!string.IsNullOrEmpty(current) &&
+                !settings.NxmKnownHandlers.Contains(current))
+                settings.NxmKnownHandlers.Add(current);
+
+            settings.NxmPreviousHandler = current;
+            NxmHandler.EnableHandler(settings);
+            AddActivity($"nxm handler re-registered (was: {name})");
+        }
+        else
+        {
+            AddActivity($"nxm handler taken by {name} — re-register in Settings");
+        }
+    }
+
     // === Helpers ===
 
     private void AddActivity(string message)
@@ -725,5 +795,77 @@ public class MainWindowViewModel : ViewModelBase
             while (RecentActivities.Count > 50)
                 RecentActivities.RemoveAt(RecentActivities.Count - 1);
         });
+    }
+
+    // === nxm download handler ===
+
+    private async Task HandleNxmItemAsync(NxmQueueItem item)
+    {
+        // Bring main window to front (may be hidden or behind)
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            _ownerWindow.Show();
+            _ownerWindow.Activate();
+        });
+
+        AddActivity($"Downloading from Nexus: mod={item.Url.ModId} file={item.Url.FileId}");
+
+        var progress = new Progress<DownloadProgress>(p =>
+        {
+            var waiting = NxmDownloadQueue.Instance.PendingCount;
+            var prefix  = waiting > 0 ? $"[+{waiting} queued] " : "";
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                StatusText    = prefix + p.Text;
+                ProgressValue = p.Percent;
+            });
+        });
+
+        var result = await NxmInstaller.HandleAsync(item, progress);
+
+        if (result is not null)
+        {
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                StatusText    = "";
+                ProgressValue = 0;
+            });
+
+            AddActivity($"Installed from Nexus: {result.ModName}");
+
+            _historyStore.Add(new Models.DownloadHistoryEntry
+            {
+                DownloadedAt = DateTime.UtcNow,
+                ModName      = result.ModName,
+                FromVersion  = "",
+                ToVersion    = result.ModVersion,
+                Source       = "Nexus",
+                PageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{result.ModId}",
+                Success      = true,
+            });
+
+            _ = RefreshModsAsync();
+        }
+        else
+        {
+            Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                StatusText    = "";
+                ProgressValue = 0;
+            });
+
+            AddActivity($"Download failed: mod={item.Url.ModId}");
+
+            _historyStore.Add(new Models.DownloadHistoryEntry
+            {
+                DownloadedAt = DateTime.UtcNow,
+                ModName      = $"Mod {item.Url.ModId}",
+                FromVersion  = "",
+                ToVersion    = "",
+                Source       = "Nexus",
+                PageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{item.Url.ModId}",
+                Success      = false,
+            });
+        }
     }
 }

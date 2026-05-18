@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings          _settings;
     private readonly MainWindowViewModel? _vm;
     private readonly double               _originalOpacity;
+    private          bool                 _suppressNxmEvent;
 
     public SettingsWindow(AppSettings settings, MainWindowViewModel? vm = null)
     {
@@ -20,6 +21,24 @@ public partial class SettingsWindow : Window
         _settings        = settings;
         _vm              = vm;
         _originalOpacity = settings.CompactOpacity;
+
+        // Auto-detect current nxm handler and add to known list
+        var currentCmd = NxmHandler.ReadCurrentCommand();
+        if (!string.IsNullOrEmpty(currentCmd) && !NxmHandler.IsRegisteredToSelf())
+        {
+            if (!settings.NxmKnownHandlers.Contains(currentCmd))
+            {
+                settings.NxmKnownHandlers.Add(currentCmd);
+                SettingsStore.Save(settings);
+            }
+            // Pre-set as secondary if nothing configured yet
+            if (string.IsNullOrEmpty(settings.NxmPreviousHandler))
+            {
+                settings.NxmPreviousHandler = currentCmd;
+                SettingsStore.Save(settings);
+            }
+        }
+
         LoadToUI();
     }
 
@@ -57,6 +76,12 @@ public partial class SettingsWindow : Window
 
         VersionRun.Text = typeof(SettingsWindow).Assembly
             .GetName().Version?.ToString(3) ?? "0.0.0";
+
+        // nxm handler state — suppress event during initial bind
+        _suppressNxmEvent = true;
+        NxmEnabledCheckBox.IsChecked = _settings.NxmHandlerEnabled;
+        _suppressNxmEvent = false;
+        RefreshNxmStatus();
     }
 
     private void BrowseBG3MM_Click(object sender, RoutedEventArgs e)
@@ -243,5 +268,162 @@ public partial class SettingsWindow : Window
         }
         DialogResult = false;
         Close();
+    }
+
+    // === nxm:// handler ===
+
+    /// <summary>
+    /// All selectable handler items: [0] = this app, [1..] = KnownHandlers entries.
+    /// The list is rebuilt each time LoadHandlerDropdowns is called.
+    /// </summary>
+    private readonly List<string> _handlerCommands = [];
+
+    private void NxmEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressNxmEvent) return;
+
+        if (NxmEnabledCheckBox.IsChecked == true)
+            NxmHandler.EnableHandler(_settings);
+        else
+            NxmHandler.DisableHandler(_settings);
+
+        RefreshNxmStatus();
+    }
+
+    private void HandlerCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ApplyHandlerButton is null) return;
+        ApplyHandlerButton.IsEnabled = HasPendingChanges();
+    }
+
+    private void ApplyHandlerButton_Click(object sender, RoutedEventArgs e)
+    {
+        var primaryIdx   = PrimaryHandlerCombo.SelectedIndex;
+        var secondaryIdx = SecondaryHandlerCombo.SelectedIndex;
+        if (primaryIdx < 0) return;
+
+        var selfCmd      = NxmHandler.GetSelfCommand();
+        var primaryCmd   = primaryIdx == 0 ? "" : _handlerCommands[primaryIdx - 1];
+        var secondaryCmd = secondaryIdx <= 0 ? "" : _handlerCommands[secondaryIdx - 1];
+
+        if (primaryCmd == selfCmd)
+        {
+            // Helper → enable + auto check ON
+            _settings.NxmPreviousHandler = secondaryCmd;
+            NxmHandler.EnableHandler(_settings);
+        }
+        else if (!string.IsNullOrEmpty(primaryCmd))
+        {
+            // Other app → register directly + check OFF
+            if (!_settings.NxmKnownHandlers.Contains(primaryCmd))
+                _settings.NxmKnownHandlers.Add(primaryCmd);
+            NxmHandler.RegisterCommand(primaryCmd);
+            _settings.NxmHandlerEnabled  = false;
+            _settings.NxmPreviousHandler = secondaryCmd;
+            SettingsStore.Save(_settings);
+        }
+        else
+        {
+            // (none) → unregister + check OFF
+            NxmHandler.Unregister();
+            _settings.NxmHandlerEnabled  = false;
+            _settings.NxmPreviousHandler = secondaryCmd;
+            SettingsStore.Save(_settings);
+        }
+
+        ApplyHandlerButton.IsEnabled = false;
+        RefreshNxmStatus();
+    }
+
+    private bool HasPendingChanges()
+    {
+        var primaryIdx   = PrimaryHandlerCombo.SelectedIndex;
+        var secondaryIdx = SecondaryHandlerCombo.SelectedIndex;
+        if (primaryIdx < 0) return false;
+
+        var selfCmd       = NxmHandler.GetSelfCommand();
+        var selectedPri   = primaryIdx == 0 ? "" : _handlerCommands[primaryIdx - 1];
+        var selectedSec   = secondaryIdx <= 0 ? "" : _handlerCommands[secondaryIdx - 1];
+        var currentPri    = NxmHandler.IsRegisteredToSelf()
+            ? selfCmd : (NxmHandler.ReadCurrentCommand() ?? "");
+
+        return selectedPri != currentPri ||
+               selectedSec != _settings.NxmPreviousHandler;
+    }
+
+    private string selfCmdCache => NxmHandler.GetSelfCommand();
+
+    private void LoadHandlerDropdowns()
+    {
+        _handlerCommands.Clear();
+        var selfCmd = NxmHandler.GetSelfCommand();
+        _handlerCommands.Add(selfCmd);
+
+        foreach (var cmd in _settings.NxmKnownHandlers)
+        {
+            if (cmd == selfCmd) continue;
+            _handlerCommands.Add(cmd);
+        }
+
+        string DisplayName(string cmd)
+        {
+            if (cmd == selfCmd) return "Helper";
+            var exe = NxmHandler.ExtractExePath(cmd);
+            if (!string.IsNullOrEmpty(exe))
+                return System.IO.Path.GetFileNameWithoutExtension(exe);
+            // Fallback: cmd has no quoted exe — truncate to 30 chars
+            return cmd.Length > 30 ? cmd[..30] + "…" : cmd;
+        }
+
+        // Primary: (none) + all handlers (always same, always active)
+        PrimaryHandlerCombo.Items.Clear();
+        PrimaryHandlerCombo.Items.Add("(none)");
+        foreach (var cmd in _handlerCommands)
+            PrimaryHandlerCombo.Items.Add(DisplayName(cmd));
+
+        var currentPri = NxmHandler.IsRegisteredToSelf()
+            ? selfCmd : (NxmHandler.ReadCurrentCommand() ?? "");
+        var priIdx = _handlerCommands.IndexOf(currentPri);
+        PrimaryHandlerCombo.SelectedIndex = priIdx >= 0 ? priIdx + 1 : 0;
+
+        // Secondary: (none) + all handlers
+        SecondaryHandlerCombo.Items.Clear();
+        SecondaryHandlerCombo.Items.Add("(none)");
+        foreach (var cmd in _handlerCommands)
+            SecondaryHandlerCombo.Items.Add(DisplayName(cmd));
+
+        if (string.IsNullOrEmpty(_settings.NxmPreviousHandler))
+            SecondaryHandlerCombo.SelectedIndex = 0;
+        else
+        {
+            var secIdx = _handlerCommands.IndexOf(_settings.NxmPreviousHandler);
+            SecondaryHandlerCombo.SelectedIndex = secIdx >= 0 ? secIdx + 1 : 0;
+        }
+
+        ApplyHandlerButton.IsEnabled = false;
+    }
+
+    private void RefreshNxmStatus()
+    {
+        // Sync enabled flag with actual registry state
+        // (handles cases where another app took over the handler)
+        var actuallyEnabled = NxmHandler.IsRegisteredToSelf();
+        if (_settings.NxmHandlerEnabled != actuallyEnabled)
+        {
+            _settings.NxmHandlerEnabled = actuallyEnabled;
+            SettingsStore.Save(_settings);
+        }
+
+        var enabled = actuallyEnabled;
+        LoadHandlerDropdowns();
+
+        PrimaryHandlerCombo.IsEnabled   = true;
+        SecondaryHandlerCombo.IsEnabled = enabled;
+
+        _suppressNxmEvent = true;
+        NxmEnabledCheckBox.IsChecked = enabled;
+        _suppressNxmEvent = false;
+
+        ApplyHandlerButton.IsEnabled = false;
     }
 }

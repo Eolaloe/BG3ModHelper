@@ -90,6 +90,12 @@ public static class ModScanner
 
     // === .pak parsing ===
 
+    /// <summary>
+    /// Reads UUID/Name/etc from a .pak file's meta.lsx. Returns null if unreadable.
+    /// Public wrapper for use by external callers (e.g. NxmInstaller).
+    /// </summary>
+    public static InstalledMod? InspectPak(string pakPath) => ParsePak(pakPath);
+
     private static InstalledMod? ParsePak(string pakPath)
     {
         try

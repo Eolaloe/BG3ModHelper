@@ -159,13 +159,19 @@ public class NexusApi(string apiKey)
 
     /// <summary>
     /// Returns a temporary download URL for a specific file.
-    /// Premium accounts only — returns null for free users (HTTP 403).
+    /// Without nxm token: Premium accounts only (free users get HTTP 403).
+    /// With nxm token (key + expires from nxm:// URL): works for all users including Free.
     /// Must be called immediately before downloading (URL expires quickly).
     /// </summary>
-    public async Task<string?> GetDownloadUrlAsync(int modId, long fileId)
+    public async Task<string?> GetDownloadUrlAsync(
+        int modId, long fileId,
+        string? nxmKey = null, long? nxmExpires = null)
     {
-        var json = await GetAsync(
-            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files/{fileId}/download_link.json");
+        var path = $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files/{fileId}/download_link.json";
+        if (!string.IsNullOrEmpty(nxmKey) && nxmExpires.HasValue)
+            path += $"?key={nxmKey}&expires={nxmExpires.Value}";
+
+        var json = await GetAsync(path);
         if (json == null) return null;
 
         try
@@ -178,6 +184,29 @@ public class NexusApi(string apiKey)
         {
             Logger.Error($"NexusApi.GetDownloadUrlAsync({modId},{fileId}) parse error: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the version string and display name of a specific file as shown on the Nexus mod page.
+    /// More accurate than meta.lsx version (which can contain author typos or lack patch suffix).
+    /// Returns (null, null) on failure.
+    /// </summary>
+    public async Task<(string? Version, string? Name)> GetFileMetaAsync(int modId, long fileId)
+    {
+        var json = await GetAsync(
+            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files/{fileId}.json");
+        if (json == null) return (null, null);
+
+        try
+        {
+            var obj = JObject.Parse(json);
+            return (obj["version"]?.Value<string>(), obj["name"]?.Value<string>());
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.GetFileMetaAsync({modId},{fileId}) parse error: {ex.Message}");
+            return (null, null);
         }
     }
 

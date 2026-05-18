@@ -5,8 +5,15 @@
         Width="600"
         WindowStartupLocation="CenterOwner"
         SizeToContent="Height"
-        MaxHeight="900"
         ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <!-- Unified width for all action buttons in Settings (Change, Get API Key, Apply) -->
+        <Style x:Key="SettingsActionButton" TargetType="Button">
+            <Setter Property="Width"   Value="80"/>
+            <Setter Property="Padding" Value="0,4"/>
+        </Style>
+    </Window.Resources>
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
@@ -14,7 +21,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
 
                 <GroupBox Header="Paths" Margin="0,0,0,12">
                     <StackPanel Margin="8">
@@ -26,7 +34,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0" x:Name="BG3MMPathBox" IsReadOnly="True"
                                      Padding="4" VerticalContentAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Padding="12,4"
+                            <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Style="{StaticResource SettingsActionButton}"
                                     Click="BrowseBG3MM_Click"/>
                         </Grid>
                         <TextBlock Foreground="Gray" FontSize="11" Margin="0,0,0,12">
@@ -45,7 +53,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0" x:Name="ModsPathBox" IsReadOnly="True"
                                      Padding="4" VerticalContentAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Padding="12,4"
+                            <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Style="{StaticResource SettingsActionButton}"
                                     Click="BrowseMods_Click"/>
                         </Grid>
                         <TextBlock Text="Leave as default unless your BG3 data is in a non-standard location."
@@ -83,7 +91,7 @@
                                     Cursor="Hand"
                                     Click="ToggleNexusKey_Click"
                                     ToolTip="Show / Hide"/>
-                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Padding="12,4"
+                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Style="{StaticResource SettingsActionButton}"
                                     Click="OpenNexusKeyPage_Click"/>
                         </Grid>
 
@@ -105,7 +113,7 @@
                                     Cursor="Hand"
                                     Click="ToggleModioKey_Click"
                                     ToolTip="Show / Hide"/>
-                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Padding="12,4"
+                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Style="{StaticResource SettingsActionButton}"
                                     Click="OpenModioKeyPage_Click"/>
                         </Grid>
                         <TextBlock TextWrapping="Wrap" Foreground="#888888" FontSize="11" Margin="0,8,0,0">
@@ -145,7 +153,7 @@
                                 <TextBox Grid.Column="0" x:Name="WatchFolderBox"
                                          IsReadOnly="True" Padding="4"
                                          VerticalContentAlignment="Center"/>
-                                <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Padding="12,4"
+                                <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Style="{StaticResource SettingsActionButton}"
                                         Click="BrowseWatchFolder_Click"/>
                             </Grid>
                             <TextBlock Text="Only newly created archive files are monitored while the app is running."
@@ -160,20 +168,66 @@
                                    TextWrapping="Wrap"/>
 
                         <!-- Compact Mode opacity -->
-                        <TextBlock Text="Compact Mode Opacity" FontWeight="SemiBold" Margin="0,16,0,4"/>
-                        <Grid>
+                        <Grid Margin="0,16,0,0">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="36"/>
                             </Grid.ColumnDefinitions>
-                            <Slider Grid.Column="0" x:Name="CompactOpacitySlider"
-                                    Minimum="0.3" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                            <TextBlock Grid.Column="0" Text="Compact Mode Opacity"
+                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Margin="0,0,12,0"/>
+                            <Slider Grid.Column="1" x:Name="CompactOpacitySlider"
+                                    Minimum="0.3" Maximum="1.0"
+                                    SmallChange="0.05" LargeChange="0.1"
+                                    TickFrequency="0.05" IsSnapToTickEnabled="True"
                                     VerticalAlignment="Center"
                                     ValueChanged="CompactOpacitySlider_ValueChanged"/>
-                            <TextBlock Grid.Column="1"
+                            <TextBlock Grid.Column="2"
                                        Text="{Binding Value, ElementName=CompactOpacitySlider, StringFormat={}{0:P0}}"
                                        FontSize="11" Foreground="#555555"
                                        VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- nxm:// Protocol Handler -->
+                <GroupBox Header="Mod Manager Download Links (nxm://)" Margin="0,0,0,12">
+                    <StackPanel Margin="8">
+                        <CheckBox x:Name="NxmEnabledCheckBox"
+                                  Content="Use this app as the primary nxm:// handler"
+                                  Checked="NxmEnabledCheckBox_Changed"
+                                  Unchecked="NxmEnabledCheckBox_Changed"/>
+                        <TextBlock Text="BG3 nxm links go to the Primary handler. Non-BG3 links forward to Secondary."
+                                   Foreground="#888888" FontSize="11" Margin="20,2,0,0"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Primary + Secondary one-line -->
+                        <Grid x:Name="NxmControlPanel" Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Primary:" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="PrimaryHandlerCombo" Grid.Column="1"
+                                      SelectionChanged="HandlerCombo_SelectionChanged"/>
+
+                            <TextBlock Grid.Column="3" Text="Secondary:" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="SecondaryHandlerCombo" Grid.Column="4"
+                                      SelectionChanged="HandlerCombo_SelectionChanged"/>
+
+                            <Button x:Name="ApplyHandlerButton" Grid.Column="6"
+                                    Content="Apply" Style="{StaticResource SettingsActionButton}"
+                                    Click="ApplyHandlerButton_Click"
+                                    IsEnabled="False"/>
                         </Grid>
                     </StackPanel>
                 </GroupBox>
@@ -204,7 +258,8 @@
                     </StackPanel>
                 </GroupBox>
 
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Buttons -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

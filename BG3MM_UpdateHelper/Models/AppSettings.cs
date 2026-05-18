@@ -35,4 +35,25 @@ public class AppSettings
     /// <summary>Last compact window position.</summary>
     public double CompactX    { get; set; } = 100;
     public double CompactY    { get; set; } = 100;
+
+    /// <summary>Whether the app was last closed in Compact mode.</summary>
+    public bool LastModeIsCompact { get; set; } = false;
+
+    // === nxm:// Protocol Handler ===
+
+    /// <summary>Whether the app is currently registered as the nxm:// handler.</summary>
+    public bool   NxmHandlerEnabled  { get; set; } = false;
+
+    /// <summary>
+    /// Backup of the nxm:// handler command that existed before we registered.
+    /// Used to forward non-BG3 nxm URLs to the original handler (e.g. Vortex).
+    /// Format: "C:\path\to\app.exe" "%1"
+    /// </summary>
+    public string NxmPreviousHandler { get; set; } = "";
+
+    /// <summary>
+    /// All nxm:// handler commands ever seen/backed up.
+    /// Used to populate the Secondary Handler dropdown in Settings.
+    /// </summary>
+    public List<string> NxmKnownHandlers { get; set; } = [];
 }
