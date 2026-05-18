@@ -9,8 +9,8 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _vm;
 
-    private static readonly string[] SupportedArchiveExtensions = { ".zip", ".7z", ".rar" };
-    private static readonly string[] SupportedExtensions        = { ".zip", ".7z", ".rar", ".pak" };
+    private static readonly string[] SupportedArchiveExtensions = [".zip", ".7z", ".rar"];
+    private static readonly string[] SupportedExtensions        = [".zip", ".7z", ".rar", ".pak"];
 
     public MainWindow()
     {
@@ -93,7 +93,7 @@ public partial class MainWindow : Window
     private static IEnumerable<string> GetDroppedFiles(DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop))
-            return Enumerable.Empty<string>();
+            return [];
 
         var files = (string[])e.Data.GetData(DataFormats.FileDrop);
         return files.Where(f =>

@@ -200,10 +200,38 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 <Border Grid.Row="0" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="16,10">
-            <StackPanel>
-                <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Title + summary -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
+                </StackPanel>
+                <!-- Download behavior guide -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="20,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="3"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="3"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Nexus Premium" FontSize="11" Foreground="#555555"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Nexus Free" FontSize="11" Foreground="#555555"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="— opens mod page" FontSize="11" Foreground="#888888"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="mod.io" FontSize="11" Foreground="#555555"/>
+                    <TextBlock Grid.Row="4" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888"/>
+                </Grid>
+            </Grid>
         </Border>
 <Border Grid.Row="1" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5,25,5">
             <Grid>

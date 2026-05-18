@@ -124,7 +124,7 @@ public static class UpdateChecker
         if (nexusDb != null && contributions.Count > 0)
             _ = nexusDb.ContributeBatchAsync(contributions);
 
-        return entries.Values.ToList();
+        return [.. entries.Values];
     }
 
     // ── Nexus update detection ────────────────────────────────────────────

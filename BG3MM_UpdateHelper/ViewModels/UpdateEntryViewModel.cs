@@ -5,7 +5,7 @@ using BG3MM_UpdateHelper.Services;
 
 namespace BG3MM_UpdateHelper.ViewModels;
 
-public class UpdateEntryViewModel : ViewModelBase
+public partial class UpdateEntryViewModel : ViewModelBase
 {
     private readonly ModUpdateEntry _entry;
     private readonly bool           _nexusIsPremium;
@@ -296,9 +296,8 @@ public class UpdateEntryViewModel : ViewModelBase
         if (_modioApi == null)
             throw new InvalidOperationException("mod.io API not initialized.");
 
-        var file = await _modioApi.GetLatestFileAsync(_entry.PublishHandle);
-        if (file == null)
-            throw new InvalidOperationException($"No file found for mod.io mod {_entry.PublishHandle}.");
+        var file = await _modioApi.GetLatestFileAsync(_entry.PublishHandle)
+            ?? throw new InvalidOperationException($"No file found for mod.io mod {_entry.PublishHandle}.");
 
         Logger.Info($"mod.io download URL obtained: {file.FileName}");
         return file.BinaryUrl;
@@ -310,9 +309,8 @@ public class UpdateEntryViewModel : ViewModelBase
             throw new InvalidOperationException("Nexus API key is not configured, or this mod has no Nexus ID.");
 
         // Step 1: latest file metadata (get fileId)
-        var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value);
-        if (latest == null)
-            throw new InvalidOperationException(
+        var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value)
+            ?? throw new InvalidOperationException(
                 $"Could not retrieve file list for Nexus mod {_entry.NexusModId}.\n" +
                 "(Check logs for the exact server response — 403/429/404)");
 
@@ -417,12 +415,14 @@ public class UpdateEntryViewModel : ViewModelBase
         });
     }
 
+    [System.Text.RegularExpressions.GeneratedRegex(@"nexusmods\.com/[^/]+/mods/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex NexusUrlRegex();
+
     private void RegisterNexus()
     {
         var input = _nexusUrlInput.Trim();
         // Parse modId from URL: nexusmods.com/baldursgate3/mods/{modId}
-        var match = System.Text.RegularExpressions.Regex.Match(
-            input, @"nexusmods\.com/[^/]+/mods/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var match = NexusUrlRegex().Match(input);
         if (!match.Success || !int.TryParse(match.Groups[1].Value, out var modId))
         {
             MessageBox.Show("Please enter a valid Nexus Mods URL.\nExample: https://www.nexusmods.com/baldursgate3/mods/12345",

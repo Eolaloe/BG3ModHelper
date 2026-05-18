@@ -16,26 +16,21 @@ namespace BG3MM_UpdateHelper.Services;
 /// All methods return null on failure (auth error, rate limit, network, 404)
 /// rather than throwing — callers apply the quiet-fallback policy.
 /// </summary>
-public class NexusApi
+public class NexusApi(string apiKey)
 {
     private static readonly HttpClient _http = new();
 
-    private readonly string _apiKey;
+    private readonly string _apiKey = apiKey;
 
     // Rate limit state (updated from response headers)
     public int HourlyRemaining { get; private set; } = 100;
     public int DailyRemaining  { get; private set; } = 2500;
 
-    public NexusApi(string apiKey)
-    {
-        _apiKey = apiKey;
-    }
-
     /// <summary>
     /// Returns a new instance with the same API key. Rate limit counters reset to defaults.
     /// Calling just before download avoids inheriting rate limit state from CheckUpdates.
     /// </summary>
-    public NexusApi Clone() => new NexusApi(_apiKey);
+    public NexusApi Clone() => new(_apiKey);
 
     /// <summary>
     /// True when the API key is set.
@@ -89,8 +84,7 @@ public class NexusApi
         try
         {
             var obj   = JObject.Parse(json);
-            var files = obj["files"] as JArray;
-            if (files == null || files.Count == 0) return null;
+            if (obj["files"] is not JArray files || files.Count == 0) return null;
 
             // Prefer MAIN category; fall back to most recent upload
             var candidates = files
@@ -126,12 +120,11 @@ public class NexusApi
     {
         var json = await GetAsync(
             $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files.json");
-        if (json == null) return new();
+        if (json == null) return [];
 
         try
         {
-            var files = JObject.Parse(json)["files"] as JArray;
-            if (files == null) return new();
+            if (JObject.Parse(json)["files"] is not JArray files) return [];
 
             // Prefer is_primary; fall back to MAIN; then most recent
             var target = files.FirstOrDefault(f => f["is_primary"]?.Value<bool>() == true)
@@ -143,24 +136,22 @@ public class NexusApi
                              .FirstOrDefault();
 
             var previewUrl = target?["content_preview_link"]?.Value<string>();
-            if (string.IsNullOrEmpty(previewUrl)) return new();
+            if (string.IsNullOrEmpty(previewUrl)) return [];
 
             // file-metadata requires no authentication
             using var http   = new System.Net.Http.HttpClient();
             var metaResponse = await http.GetStringAsync(previewUrl);
-            var children     = JObject.Parse(metaResponse)["children"] as JArray;
-            if (children == null) return new();
+            if (JObject.Parse(metaResponse)["children"] is not JArray children) return [];
 
-            return children
+            return [.. children
                 .Where(c => c["name"]?.Value<string>()
                     ?.EndsWith(".pak", StringComparison.OrdinalIgnoreCase) == true)
-                .Select(c => c["name"]!.Value<string>()!)
-                .ToList();
+                .Select(c => c["name"]!.Value<string>()!)];
         }
         catch (Exception ex)
         {
             Logger.Warn($"NexusApi.GetPakNamesAsync({modId}): {ex.Message}");
-            return new();
+            return [];
         }
     }
 

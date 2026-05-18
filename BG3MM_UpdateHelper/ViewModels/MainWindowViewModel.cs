@@ -24,7 +24,7 @@ public class MainWindowViewModel : ViewModelBase
     private int    _progressMax       = 100;
     private bool   _progressIndeterminate = false;
 
-    private List<InstalledMod> _installedMods = new();
+    private List<InstalledMod> _installedMods = [];
     private readonly NexusIdDatabase      _nexusIdDb    = new();
     private readonly ModFileIdStore       _fileIdStore  = new();
     private readonly DownloadHistoryStore _historyStore = new();
@@ -43,7 +43,7 @@ public class MainWindowViewModel : ViewModelBase
         OpenHelpCommand          = new RelayCommand(OpenHelp);
         OpenHistoryCommand       = new RelayCommand(OpenHistory);
 
-        RecentActivities = new ObservableCollection<string>();
+        RecentActivities = [];
         AddActivity("Application started");
 
         _fileIdStore.Load();
@@ -258,7 +258,7 @@ public class MainWindowViewModel : ViewModelBase
                 : PathDiscovery.GetDefaultModsFolder();
 
             // reloadFunc: rescan mods then re-run update check
-            Func<Task<List<ModUpdateEntry>>> reloadFunc = async () =>
+            async Task<List<ModUpdateEntry>> reloadFunc()
             {
                 var rFolder = !string.IsNullOrEmpty(_settings.ModsFolderPath)
                     ? _settings.ModsFolderPath
@@ -274,7 +274,7 @@ public class MainWindowViewModel : ViewModelBase
                     _nexusIdDb,
                     _fileIdStore,
                     _settings.NexusIsPremium);
-            };
+            }
 
             var notificationVm = new UpdateNotificationViewModel(
                 updates,
@@ -518,7 +518,7 @@ public class MainWindowViewModel : ViewModelBase
             var progress = new Progress<DownloadProgress>(p => StatusText = p.Text);
 
             // pak direct copy vs archive extraction
-            if (Path.GetExtension(info.ArchivePath).ToLowerInvariant() == ".pak")
+            if (Path.GetExtension(info.ArchivePath).Equals(".pak", StringComparison.OrdinalIgnoreCase))
             {
                 var destPath = Path.Combine(modsFolder, info.PakFileName);
                 if (_settings.BackupBeforeUpdate && File.Exists(destPath))

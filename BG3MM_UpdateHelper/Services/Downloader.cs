@@ -283,13 +283,8 @@ public record DownloadProgress(string Text, int Percent);
 /// Thrown when the .pak file cannot be overwritten because it is locked
 /// (e.g. BG3 or another process has it open).
 /// </summary>
-public class PakInUseException : IOException
+public class PakInUseException(string pakFileName, Exception inner)
+    : IOException($"Cannot overwrite {pakFileName} — close BG3 and retry.", inner)
 {
-    public string PakFileName { get; }
-
-    public PakInUseException(string pakFileName, Exception inner)
-        : base($"Cannot overwrite {pakFileName} — close BG3 and retry.", inner)
-    {
-        PakFileName = pakFileName;
-    }
+    public string PakFileName { get; } = pakFileName;
 }
