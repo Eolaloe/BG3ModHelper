@@ -23,7 +23,7 @@ namespace BG3MM_UpdateHelper.Services;
 /// </summary>
 public class NexusIdDatabase
 {
-    private static readonly HttpClient _http = new();
+    private static readonly HttpClient _http = HttpClientFactory.Shared;
 
     private static readonly string DbCachePath =
         Path.Combine(SettingsStore.GetDataFolder(), "nexusid_db.json");
@@ -39,7 +39,7 @@ public class NexusIdDatabase
         await SyncFromGitHubAsync();
     }
 
-    // ── Lookup ────────────────────────────────────────────────────────────
+    // === Lookup ===
 
     /// <summary>
     /// Looks up pak entries by pakFileName (without extension).
@@ -73,7 +73,7 @@ public class NexusIdDatabase
         return entries.Count == 1 ? entries[0] : null;
     }
 
-    // ── Contribute ────────────────────────────────────────────────────────
+    // === Contribute ===
 
     /// <summary>
     /// Submits a batch of UUID contributions in a single request.
@@ -111,7 +111,7 @@ public class NexusIdDatabase
         });
     }
 
-    // ── GitHub sync ───────────────────────────────────────────────────────
+    // === GitHub sync ===
 
     private string? _cachedETag;
 
@@ -158,7 +158,7 @@ public class NexusIdDatabase
         }
     }
 
-    // ── Index building ────────────────────────────────────────────────────
+    // === Index building ===
 
     private void LoadFromCache()
     {

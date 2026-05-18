@@ -8,6 +8,7 @@
 		<UseWPF>true</UseWPF>
 		<AssemblyName>BG3MM_UpdateHelper</AssemblyName>
 		<RootNamespace>BG3MM_UpdateHelper</RootNamespace>
+		<Version>0.9.0</Version>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
 		<ApplicationIcon>app.ico</ApplicationIcon>
@@ -17,6 +18,9 @@
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishReadyToRun>true</PublishReadyToRun>
+
+		<!-- Accept .NET 9+ runtime if .NET 8 is missing -->
+		<RollForward>LatestMajor</RollForward>
 	</PropertyGroup>
 
 	<ItemGroup>

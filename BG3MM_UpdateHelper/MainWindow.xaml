@@ -11,6 +11,33 @@
         DragLeave="Window_DragLeave"
         MouseDown="Window_MouseDown">
 
+    <Window.Resources>
+        <Style x:Key="PrimaryActionButton" TargetType="Button">
+            <Setter Property="Background" Value="#0078d4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#106ebe"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#cccccc"/>
+                                <Setter Property="Foreground" Value="#888888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <!-- Root Grid: content + drag overlay stacked -->
     <Grid>
         <!-- Main content -->
@@ -31,7 +58,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="BG3MM folder:" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="0" Text="BG3MM folder:" FontWeight="SemiBold" Foreground="#666666"/>
                     <TextBlock Grid.Column="1" Text="{Binding BG3MMFolderPath}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                     <Button Grid.Column="2" Content="Change..." Padding="8,2"
@@ -43,7 +70,7 @@
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Mods folder:" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="0" Text="Mods folder:" FontWeight="SemiBold" Foreground="#666666"/>
                     <TextBlock Grid.Column="1" Text="{Binding ModsFolderDisplay}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </Grid>
@@ -53,7 +80,7 @@
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Installed mods:" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="0" Text="Installed mods:" FontWeight="SemiBold" Foreground="#666666"/>
                     <TextBlock Grid.Column="1" Text="{Binding InstalledModsCountDisplay}"
                                VerticalAlignment="Center"/>
                 </Grid>
@@ -63,7 +90,7 @@
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold" Foreground="#666666"/>
                     <TextBlock Grid.Column="1" Text="{Binding LastCheckDisplay}"
                                VerticalAlignment="Center"/>
                 </Grid>
@@ -77,7 +104,8 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" Content="Check for Updates"
-                        Height="44" FontSize="14"
+                        Height="44" FontSize="14" FontWeight="SemiBold"
+                        Style="{StaticResource PrimaryActionButton}"
                         Command="{Binding CheckUpdatesCommand}"/>
                 <Button Grid.Column="2" Content="Launch BG3MM"
                         Height="44" FontSize="14"
@@ -118,11 +146,13 @@
 
             <!-- Bottom buttons -->
             <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <Button Content="History" Padding="16,4" Margin="0,0,8,0"
+                <Button Content="History"  Width="72" Padding="0,4" Margin="0,0,8,0"
                         Command="{Binding OpenHistoryCommand}"/>
-                <Button Content="Settings" Padding="16,4" Margin="0,0,8,0"
+                <Button Content="Compact"  Width="72" Padding="0,4" Margin="0,0,8,0"
+                        Command="{Binding EnterCompactCommand}"/>
+                <Button Content="Settings" Width="72" Padding="0,4" Margin="0,0,8,0"
                         Command="{Binding OpenSettingsCommand}"/>
-                <Button Content="Help" Padding="16,4"
+                <Button Content="Help"     Padding="12,4"
                         Command="{Binding OpenHelpCommand}"/>
             </StackPanel>
         </Grid>

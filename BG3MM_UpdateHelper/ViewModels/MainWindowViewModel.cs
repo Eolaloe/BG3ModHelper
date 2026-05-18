@@ -1,4 +1,3 @@
-using BG3MM_UpdateHelper.ViewModels;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +5,7 @@ using System.Windows;
 using BG3MM_UpdateHelper.Models;
 using BG3MM_UpdateHelper.Services;
 using BG3MM_UpdateHelper.Views;
+using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 
 namespace BG3MM_UpdateHelper.ViewModels;
@@ -42,6 +42,9 @@ public class MainWindowViewModel : ViewModelBase
         OpenSettingsCommand      = new RelayCommand(OpenSettings, () => !_isScanning);
         OpenHelpCommand          = new RelayCommand(OpenHelp);
         OpenHistoryCommand       = new RelayCommand(OpenHistory);
+        EnterCompactCommand      = new RelayCommand(EnterCompact);
+        ExitCompactCommand       = new RelayCommand(ExitCompact);
+        ExitAppCommand           = new RelayCommand(() => System.Windows.Application.Current.Shutdown());
 
         RecentActivities = [];
         AddActivity("Application started");
@@ -52,7 +55,7 @@ public class MainWindowViewModel : ViewModelBase
         _ = RefreshModsAsync();
     }
 
-    // ── Display properties ────────────────────────────────────────────────
+    // === Display properties ===
 
     public string BG3MMFolderPath =>
         string.IsNullOrEmpty(_settings.BG3MMFolderPath) ? "(not set)" : _settings.BG3MMFolderPath;
@@ -77,7 +80,7 @@ public class MainWindowViewModel : ViewModelBase
     public string LastCheckDisplay =>
         _lastCheck.HasValue ? _lastCheck.Value.ToString("yyyy-MM-dd HH:mm") : "—";
 
-    // ── Progress properties ───────────────────────────────────────────────
+    // === Progress properties ===
 
     public bool IsScanning
     {
@@ -114,7 +117,7 @@ public class MainWindowViewModel : ViewModelBase
 
     public ObservableCollection<string> RecentActivities { get; }
 
-    // ── Commands ──────────────────────────────────────────────────────────
+    // === Commands ===
 
     public RelayCommand ChangeBG3MMFolderCommand { get; }
     public RelayCommand CheckUpdatesCommand      { get; }
@@ -122,8 +125,14 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand OpenSettingsCommand      { get; }
     public RelayCommand OpenHelpCommand          { get; }
     public RelayCommand OpenHistoryCommand       { get; }
+    public RelayCommand EnterCompactCommand      { get; }
+    public RelayCommand ExitCompactCommand       { get; }
+    public RelayCommand ExitAppCommand           { get; }
 
-    // ── Command implementations ───────────────────────────────────────────
+    public int    CompactSize    => _settings.CompactSize;
+    public double CompactOpacity => _settings.CompactOpacity;
+
+    // === Command implementations ===
 
     private void ChangeBG3MMFolder()
     {
@@ -342,7 +351,7 @@ public class MainWindowViewModel : ViewModelBase
 
     private void OpenSettings()
     {
-        var dialog = new SettingsWindow(_settings) { Owner = _ownerWindow };
+        var dialog = new SettingsWindow(_settings, this) { Owner = _ownerWindow };
 
         if (dialog.ShowDialog() != true) return;
 
@@ -353,6 +362,7 @@ public class MainWindowViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(BG3MMFolderPath));
         OnPropertyChanged(nameof(ModsFolderDisplay));
+        OnPropertyChanged(nameof(CompactOpacity));
         AddActivity("Settings updated");
         InitFolderWatcher();
         _ = RefreshModsAsync();
@@ -362,17 +372,29 @@ public class MainWindowViewModel : ViewModelBase
     {
         MessageBox.Show(
             "BG3MM_UpdateHelper\n\n" +
-            "A companion tool for BG3ModManager that checks for mod updates " +
-            "on Nexus Mods and mod.io, and downloads them automatically.\n\n" +
-            "How to use:\n" +
-            "1. Configure your BG3MM folder and API keys in Settings\n" +
+            "A companion tool for BG3ModManager that automates mod updates " +
+            "from Nexus Mods and mod.io.\n\n" +
+            "--- Update Check ---\n" +
+            "1. Set BG3MM folder and API keys in Settings\n" +
             "2. Click [Check for Updates]\n" +
-            "3. Select mods to update and click Download\n" +
+            "3. Select mods and click Download\n" +
             "4. Launch BG3MM to load the updated mods\n\n" +
-            "Notes:\n" +
-            "- mod.io: auto-download available for all users\n" +
-            "- Nexus Premium: auto-download supported\n" +
-            "- Nexus Free: mod page opens for manual download",
+            "Download support:\n" +
+            "- mod.io / Nexus Premium: auto-download\n" +
+            "- Nexus Free: mod page opens for manual download\n\n" +
+            "--- Local Install ---\n" +
+            "Drag & drop .zip / .7z / .rar / .pak files anywhere in the\n" +
+            "window. Works in Compact Mode too.\n\n" +
+            "--- Folder Watch ---\n" +
+            "Auto-detect new archives in your download folder.\n" +
+            "Enable and configure in Settings.\n\n" +
+            "--- Compact Mode ---\n" +
+            "Click [Compact] for a small floating window with quick\n" +
+            "actions. Right-click the window for more options.\n\n" +
+            "--- Other Features ---\n" +
+            "- Backup: Create .pak.bak before overwriting (Settings)\n" +
+            "- Recycle Bin: Move source files after install (Settings)\n" +
+            "- History: View download/install log via [History]",
             "Help", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -383,7 +405,39 @@ public class MainWindowViewModel : ViewModelBase
         window.Show();
     }
 
-    // ── Folder Watcher ────────────────────────────────────────────────────────
+    // === Compact Mode ===
+
+    private Views.CompactWindow? _compactWindow;
+
+    private void EnterCompact()
+    {
+        _compactWindow = new Views.CompactWindow(this)
+        {
+            Left = _settings.CompactX,
+            Top  = _settings.CompactY,
+        };
+        _compactWindow.Show();
+        _ownerWindow.Hide();
+    }
+
+    private void ExitCompact()
+    {
+        _compactWindow?.Close();
+        _compactWindow = null;
+        _ownerWindow.Show();
+        _ownerWindow.Activate();
+    }
+
+    public void NotifyCompactOpacityChanged() => OnPropertyChanged(nameof(CompactOpacity));
+
+    public void SaveCompactPosition(double x, double y)
+    {
+        _settings.CompactX = x;
+        _settings.CompactY = y;
+        SettingsStore.Save(_settings);
+    }
+
+    // === Folder Watcher ===
 
     /// <summary>Called from drag-and-drop — reuses FolderWatcherService.</summary>
     public ArchiveSourceInfo? AnalyzeDroppedArchive(string archivePath)
@@ -443,6 +497,9 @@ public class MainWindowViewModel : ViewModelBase
             vm.InstallAllRequested += async () =>
             {
                 window.Close();
+                // Remove `next` from queue first — otherwise the while loop below
+                // would dequeue and reinstall it as the first remaining item.
+                _detectQueue.TryDequeue(out _);
                 await InstallLocalArchiveAsync(next, vm.FinalSource);
                 while (_detectQueue.Count > 0)
                 {
@@ -483,7 +540,7 @@ public class MainWindowViewModel : ViewModelBase
         Logger.Info($"FolderWatcher started: {folder}");
     }
 
-    // ── Install confirmation queue ────────────────────────────────────────────
+    // === Install confirmation queue ===
 
     private readonly Queue<ArchiveSourceInfo>  _detectQueue  = new();
     private          InstallConfirmViewModel?  _activeConfirmVm;
@@ -545,6 +602,24 @@ public class MainWindowViewModel : ViewModelBase
 
             AddActivity($"Installed: {info.ModName}");
             Logger.Info($"Local install complete: {info.ModName}");
+
+            // Move source file to Recycle Bin after successful install (if enabled)
+            if (_settings.DeleteSourceAfterInstall && File.Exists(info.ArchivePath))
+            {
+                try
+                {
+                    FileSystem.DeleteFile(info.ArchivePath,
+                        UIOption.OnlyErrorDialogs,
+                        RecycleOption.SendToRecycleBin);
+                    Logger.Info($"Source moved to Recycle Bin: {Path.GetFileName(info.ArchivePath)}");
+                    AddActivity($"Source moved to Recycle Bin: {Path.GetFileName(info.ArchivePath)}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Failed to move source to Recycle Bin {info.ArchivePath}: {ex.Message}");
+                }
+            }
+
             _ = RefreshModsAsync();
         }
         catch (Exception ex)
@@ -573,7 +648,7 @@ public class MainWindowViewModel : ViewModelBase
     /// <summary>Restarts folder watcher after settings are saved.</summary>
     public void RestartFolderWatcher() => InitFolderWatcher();
 
-    // ── Mod scanning ──────────────────────────────────────────────────────
+    // === Mod scanning ===
 
     private async Task RefreshModsAsync()
     {
@@ -639,7 +714,7 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
+    // === Helpers ===
 
     private void AddActivity(string message)
     {

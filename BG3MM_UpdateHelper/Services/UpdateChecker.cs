@@ -26,7 +26,7 @@ public static class UpdateChecker
         bool                nexusIsPremium,
         IProgress<int>?     progress = null)
     {
-        // ── mod.io: refresh cache via API (batch, unchanged) ──────────────
+        // === mod.io: refresh cache via API (batch, unchanged) ===
         var modioCache = ModioApi.LoadCache();
 
         var modioMods = installedMods
@@ -39,7 +39,7 @@ public static class UpdateChecker
             ModioApi.SaveCache(modioCache);
         }
 
-        // ── Build update entries ──────────────────────────────────────────
+        // === Build update entries ===
         var entries      = new Dictionary<string, ModUpdateEntry>();
         var checkedCount = 0;
         var contributions = new List<ContributeEntry>();
@@ -48,7 +48,7 @@ public static class UpdateChecker
         {
             ModUpdateEntry? entry = null;
 
-            // ── mod.io check (unchanged) ──────────────────────────────────
+            // === mod.io check (unchanged) ===
             if (mod.PublishHandle != 0 &&
                 modioCache.Mods.TryGetValue(mod.UUID, out var modioData))
             {
@@ -63,7 +63,7 @@ public static class UpdateChecker
                 }
             }
 
-            // ── Nexus check: DB lookup, no API calls ──────────────────────
+            // === Nexus check: DB lookup, no API calls ===
             if (nexusDb != null)
             {
                 var pakFileName = Path.GetFileName(mod.PakFilePath);
@@ -122,12 +122,19 @@ public static class UpdateChecker
 
         // Send UUID contributions in a single batch request
         if (nexusDb != null && contributions.Count > 0)
-            _ = nexusDb.ContributeBatchAsync(contributions);
+            _ = LogIfFails(nexusDb.ContributeBatchAsync(contributions), "ContributeBatchAsync");
 
         return [.. entries.Values];
     }
 
-    // ── Nexus update detection ────────────────────────────────────────────
+    /// <summary>Logs exceptions from a fire-and-forget task.</summary>
+    private static async Task LogIfFails(Task task, string name)
+    {
+        try { await task; }
+        catch (Exception ex) { Logger.Warn($"{name} failed: {ex.Message}"); }
+    }
+
+    // === Nexus update detection ===
 
     /// <summary>
     /// Determines whether a Nexus update is available (spec §4.11).
@@ -145,7 +152,7 @@ public static class UpdateChecker
         return IsNewer(dbEntry.Version, mod.Version);
     }
 
-    // ── mod.io cache refresh ──────────────────────────────────────────────
+    // === mod.io cache refresh ===
 
     private static async Task RefreshModioCache(
         List<InstalledMod> mods, ModioApi api, ModioCachedData cache)
@@ -165,7 +172,7 @@ public static class UpdateChecker
         Logger.Info($"UpdateChecker: mod.io cache refresh complete ({batch.Count} mods)");
     }
 
-    // ── Version comparison ────────────────────────────────────────────────
+    // === Version comparison ===
 
     public static bool IsNewer(string candidate, string current)
     {
@@ -184,7 +191,7 @@ public static class UpdateChecker
     private static string Normalize(string ver) =>
         ver.TrimStart('v', 'V').Trim();
 
-    // ── Entry helpers ─────────────────────────────────────────────────────
+    // === Entry helpers ===
 
     private static ModUpdateEntry EnsureEntry(
         Dictionary<string, ModUpdateEntry> dict, InstalledMod mod)

@@ -56,7 +56,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         UpdateSummary();
     }
 
-    // ── Properties ────────────────────────────────────────────────────────
+    // === Properties ===
 
     public ObservableCollection<UpdateEntryViewModel> Entries { get; }
 
@@ -92,7 +92,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         private set => SetField(ref _busyText, value);
     }
 
-    // ── Commands ──────────────────────────────────────────────────────────
+    // === Commands ===
 
     public RelayCommand SelectAllCommand        { get; }
     public RelayCommand DeselectAllCommand      { get; }
@@ -103,7 +103,7 @@ public class UpdateNotificationViewModel : ViewModelBase
     public event Action?                       CloseRequested;
     public event Action<string, int, int>?     NexusMappingAdded;
 
-    // ── Refresh ──────────────────────────────────────────────────────────────
+    // === Refresh ===
 
     private async void ExecuteRefresh()
     {
@@ -144,7 +144,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         }
     }
 
-    // ── Logic ─────────────────────────────────────────────────────────────
+    // === Logic ===
 
     private void SetAllSelected(bool selected)
     {
@@ -155,41 +155,57 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private async void ExecuteDownloadSelected()
     {
-        var selected = Entries
-            .Where(e => e.IsSelected && e.CanAutoDownload && e.IsActionEnabled)
-            .ToList();
-
-        if (selected.Count == 0) return;
-
-        IsBusy = true;
-        int done = 0;
-
-        foreach (var entry in selected)
+        try
         {
-            BusyText = $"({++done}/{selected.Count}) {entry.ModName}";
-            await entry.ExecuteDownloadAsync();
+            var selected = Entries
+                .Where(e => e.IsSelected && e.CanAutoDownload && e.IsActionEnabled)
+                .ToList();
+
+            if (selected.Count == 0) return;
+
+            IsBusy = true;
+            int done = 0;
+
+            foreach (var entry in selected)
+            {
+                BusyText = $"({++done}/{selected.Count}) {entry.ModName}";
+                await entry.ExecuteDownloadAsync();
+            }
+
+            IsBusy   = false;
+            BusyText = "";
+            UpdateSummary();
+            DownloadSelectedCommand.RaiseCanExecuteChanged();
+
+            // Summary popup
+            var succeeded = selected.Count(e => e.Status == UpdateStatus.Updated);
+            var failed    = selected.Count(e => e.Status == UpdateStatus.Failed);
+            var msg       = $"{succeeded}/{selected.Count} mods updated successfully.";
+            if (failed > 0) msg += $"\n{failed} failed — check Recent Activity for details.";
+            MessageBox.Show(msg, "Download Complete", MessageBoxButton.OK,
+                failed > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
-
-        IsBusy   = false;
-        BusyText = "";
-        UpdateSummary();
-        DownloadSelectedCommand.RaiseCanExecuteChanged();
-
-        // Summary popup
-        var succeeded = selected.Count(e => e.Status == UpdateStatus.Updated);
-        var failed    = selected.Count(e => e.Status == UpdateStatus.Failed);
-        var msg       = $"{succeeded}/{selected.Count} mods updated successfully.";
-        if (failed > 0) msg += $"\n{failed} failed — check Recent Activity for details.";
-        MessageBox.Show(msg, "Download Complete", MessageBoxButton.OK,
-            failed > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        catch (Exception ex)
+        {
+            IsBusy   = false;
+            BusyText = "";
+            Logger.Error($"ExecuteDownloadSelected failed: {ex.Message}");
+        }
     }
 
     private async void OnDownloadRequested(UpdateEntryViewModel entry)
     {
-        // Single-item download via row button
-        await entry.ExecuteDownloadAsync();
-        UpdateSummary();
-        DownloadSelectedCommand.RaiseCanExecuteChanged();
+        try
+        {
+            // Single-item download via row button
+            await entry.ExecuteDownloadAsync();
+            UpdateSummary();
+            DownloadSelectedCommand.RaiseCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"OnDownloadRequested failed: {ex.Message}");
+        }
     }
 
     private void OnNexusRegistered(UpdateEntryViewModel entry, int modId)

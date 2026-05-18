@@ -10,9 +10,9 @@ namespace BG3MM_UpdateHelper.Services;
 /// </summary>
 public static class Downloader
 {
-    private static readonly HttpClient _http = new();
+    private static readonly HttpClient _http = HttpClientFactory.Shared;
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // === Public API ===
 
     /// <summary>
     /// Full pipeline: download → extract → backup → install.
@@ -93,11 +93,11 @@ public static class Downloader
         {
             // Clean up temp files
             try { Directory.Delete(tempDir, recursive: true); }
-            catch { /* ignore cleanup errors */ }
+            catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
         }
     }
 
-    // ── Download ──────────────────────────────────────────────────────────
+    // === Download ===
 
     /// <summary>
     /// Installs a mod from a local archive (folder watcher / drag-and-drop).
@@ -147,7 +147,8 @@ public static class Downloader
         }
         finally
         {
-            try { Directory.Delete(tempDir, recursive: true); } catch { }
+            try { Directory.Delete(tempDir, recursive: true); }
+            catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
         }
     }
 
@@ -187,12 +188,8 @@ public static class Downloader
         Logger.Info($"Downloader: downloaded {received / 1024.0:F0} KB → {Path.GetFileName(destPath)}");
     }
 
-    // ── Extract ───────────────────────────────────────────────────────────
+    // === Extract ===
 
-    /// <summary>
-    /// Extracts all .pak files from the archive into extractDir.
-    /// Handles both flat and nested archives. Supports zip, 7z, rar.
-    /// </summary>
     /// <summary>
     /// Extracts all .pak files from the archive into extractDir.
     /// Delegates to FolderWatcherService (shared logic, supports zip/7z/rar).
@@ -200,7 +197,7 @@ public static class Downloader
     private static List<string> ExtractPakFiles(string archivePath, string extractDir) =>
         FolderWatcherService.ExtractPakFiles(archivePath, extractDir);
 
-    // ── Cache invalidation ───────────────────────────────────────────────
+    // === Cache invalidation ===
 
     /// <summary>
     /// Removes the installed pak entry from the cache so the next scan
@@ -259,7 +256,7 @@ public static class Downloader
         }
     }
 
-    // ── Backup ────────────────────────────────────────────────────────────
+    // === Backup ===
 
     private static void BackupExistingPak(string pakPath)
     {

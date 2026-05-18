@@ -34,7 +34,7 @@ public class DownloadHistoryEntryViewModel
         OpenPageCommand = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(entry.PageUrl));
     }
 
-    // ── Display ───────────────────────────────────────────────────────────
+    // === Display ===
 
     public string DateDisplay =>
         _entry.DownloadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
@@ -66,7 +66,7 @@ public class DownloadHistoryEntryViewModel
 
     public bool CanOpenPage => !string.IsNullOrEmpty(_entry.PageUrl);
 
-    // ── Command ───────────────────────────────────────────────────────────
+    // === Command ===
 
     public RelayCommand OpenPageCommand { get; }
 

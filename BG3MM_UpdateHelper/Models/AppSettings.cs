@@ -13,11 +13,26 @@ public class AppSettings
     /// <summary>Last update check time — persisted so it survives app restarts.</summary>
     public DateTime? LastCheck { get; set; } = null;
 
-    // ── Folder Watcher ────────────────────────────────────────────────────
+    // === Folder Watcher ===
 
     /// <summary>Whether download folder auto-install watching is enabled.</summary>
     public bool   FolderWatchEnabled      { get; set; } = false;
 
     /// <summary>Path to watch. Empty = OS default Downloads folder.</summary>
     public string WatchedDownloadFolder   { get; set; } = "";
+
+    /// <summary>Delete source archive/pak after a successful install.</summary>
+    public bool   DeleteSourceAfterInstall { get; set; } = false;
+
+    // === Compact Mode ===
+
+    /// <summary>Compact window size in pixels (square). Default 160.</summary>
+    public int    CompactSize    { get; set; } = 160;
+
+    /// <summary>Compact window background opacity. 0.3~1.0, default 0.85.</summary>
+    public double CompactOpacity { get; set; } = 0.85;
+
+    /// <summary>Last compact window position.</summary>
+    public double CompactX    { get; set; } = 100;
+    public double CompactY    { get; set; } = 100;
 }

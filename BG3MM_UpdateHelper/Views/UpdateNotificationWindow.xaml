@@ -211,7 +211,7 @@
                     <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
                 </StackPanel>
                 <!-- Download behavior guide -->
-                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="20,0,0,0">
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="20,0,16,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="6"/>
@@ -224,11 +224,11 @@
                         <RowDefinition Height="3"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Nexus Premium" FontSize="11" Foreground="#555555"/>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Nexus Premium" FontSize="11" FontWeight="SemiBold" Foreground="#d98200"/>
                     <TextBlock Grid.Row="0" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888"/>
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Nexus Free" FontSize="11" Foreground="#555555"/>
                     <TextBlock Grid.Row="2" Grid.Column="2" Text="— opens mod page" FontSize="11" Foreground="#888888"/>
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="mod.io" FontSize="11" Foreground="#555555"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="mod.io" FontSize="11" FontWeight="SemiBold" Foreground="#0078d4"/>
                     <TextBlock Grid.Row="4" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888"/>
                 </Grid>
             </Grid>

@@ -22,7 +22,7 @@ public class ModFileIdStore
 
     private Dictionary<string, FileIdEntry> _store = new();
 
-    // ── Initialization ────────────────────────────────────────────────────
+    // === Initialization ===
 
     public void Load()
     {
@@ -42,7 +42,7 @@ public class ModFileIdStore
         }
     }
 
-    // ── Lookup ────────────────────────────────────────────────────────────
+    // === Lookup ===
 
     public long? GetFileId(string uuid)
     {
@@ -57,7 +57,7 @@ public class ModFileIdStore
         return entry;
     }
 
-    // ── Update ────────────────────────────────────────────────────────────
+    // === Update ===
 
     public void SetFileId(string uuid, int modId, long fileId, string fileName = "")
     {
@@ -81,7 +81,7 @@ public class ModFileIdStore
         Logger.Info($"ModFileIdStore: pruned {orphans.Count} orphan(s)");
     }
 
-    // ── Persistence ───────────────────────────────────────────────────────
+    // === Persistence ===
 
     private void Save()
     {

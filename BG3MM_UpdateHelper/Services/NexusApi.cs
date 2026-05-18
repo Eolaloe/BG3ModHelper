@@ -18,7 +18,10 @@ namespace BG3MM_UpdateHelper.Services;
 /// </summary>
 public class NexusApi(string apiKey)
 {
-    private static readonly HttpClient _http = new();
+    private static readonly HttpClient _http = HttpClientFactory.Shared;
+
+    private static readonly string _appVersion =
+        typeof(NexusApi).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     private readonly string _apiKey = apiKey;
 
@@ -41,7 +44,7 @@ public class NexusApi(string apiKey)
     public bool CanMakeRequest() =>
         !string.IsNullOrWhiteSpace(_apiKey);
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // === Public API ===
 
     /// <summary>
     /// Validates the API key and returns user info including Premium status.
@@ -139,8 +142,7 @@ public class NexusApi(string apiKey)
             if (string.IsNullOrEmpty(previewUrl)) return [];
 
             // file-metadata requires no authentication
-            using var http   = new System.Net.Http.HttpClient();
-            var metaResponse = await http.GetStringAsync(previewUrl);
+            var metaResponse = await _http.GetStringAsync(previewUrl);
             if (JObject.Parse(metaResponse)["children"] is not JArray children) return [];
 
             return [.. children
@@ -179,7 +181,7 @@ public class NexusApi(string apiKey)
         }
     }
 
-    // ── HTTP internals ────────────────────────────────────────────────────
+    // === HTTP internals ===
 
     /// <summary>
     /// Performs an authenticated GET request against the Nexus API base URL.
@@ -200,9 +202,9 @@ public class NexusApi(string apiKey)
                 HttpMethod.Get, Constants.NEXUS_API_BASE + path);
 
             request.Headers.Add("apikey", _apiKey);
-            request.Headers.Add("User-Agent", "BG3MM_UpdateHelper/0.1");
+            request.Headers.Add("User-Agent", $"BG3MM_UpdateHelper/{_appVersion}");
             request.Headers.Add("Application-Name", "BG3MM_UpdateHelper");
-            request.Headers.Add("Application-Version", "0.1.0");
+            request.Headers.Add("Application-Version", _appVersion);
             request.Headers.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
 

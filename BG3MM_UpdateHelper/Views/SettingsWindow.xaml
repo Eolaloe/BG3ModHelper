@@ -68,9 +68,22 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="NexusKeyBox" Padding="4"/>
-                            <Button Grid.Column="1" Content="Get API Key" Margin="6,0,0,0" Padding="12,4"
+                            <!-- Masked -->
+                            <PasswordBox Grid.Column="0" x:Name="NexusKeyBox"
+                                         Padding="4" VerticalContentAlignment="Center"
+                                         PasswordChar="*"/>
+                            <!-- Plain text (visible when eye is toggled) -->
+                            <TextBox Grid.Column="0" x:Name="NexusKeyBoxPlain"
+                                     Padding="4" Visibility="Collapsed"/>
+                            <Button Grid.Column="1" Content="👁" Width="30" Margin="4,0,0,0"
+                                    FontSize="13" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Cursor="Hand"
+                                    Click="ToggleNexusKey_Click"
+                                    ToolTip="Show / Hide"/>
+                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Padding="12,4"
                                     Click="OpenNexusKeyPage_Click"/>
                         </Grid>
 
@@ -79,9 +92,20 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" x:Name="ModioKeyBox" Padding="4"/>
-                            <Button Grid.Column="1" Content="Get API Key" Margin="6,0,0,0" Padding="12,4"
+                            <PasswordBox Grid.Column="0" x:Name="ModioKeyBox"
+                                         Padding="4" VerticalContentAlignment="Center"
+                                         PasswordChar="*"/>
+                            <TextBox Grid.Column="0" x:Name="ModioKeyBoxPlain"
+                                     Padding="4" Visibility="Collapsed"/>
+                            <Button Grid.Column="1" Content="👁" Width="30" Margin="4,0,0,0"
+                                    FontSize="13" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Cursor="Hand"
+                                    Click="ToggleModioKey_Click"
+                                    ToolTip="Show / Hide"/>
+                            <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Padding="12,4"
                                     Click="OpenModioKeyPage_Click"/>
                         </Grid>
                         <TextBlock TextWrapping="Wrap" Foreground="#888888" FontSize="11" Margin="0,8,0,0">
@@ -127,6 +151,30 @@
                             <TextBlock Text="Only newly created archive files are monitored while the app is running."
                                        Foreground="#888888" FontSize="11" Margin="0,4,0,0"/>
                         </StackPanel>
+
+                        <CheckBox x:Name="DeleteSourceCheckBox"
+                                  Content="Move source archive/pak to Recycle Bin after successful install"
+                                  Margin="0,12,0,0"/>
+                        <TextBlock Text="Applies to folder-watch auto-install and drag-and-drop."
+                                   Foreground="#888888" FontSize="11" Margin="20,2,0,0"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Compact Mode opacity -->
+                        <TextBlock Text="Compact Mode Opacity" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="36"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider Grid.Column="0" x:Name="CompactOpacitySlider"
+                                    Minimum="0.3" Maximum="1.0" SmallChange="0.05" LargeChange="0.1"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="CompactOpacitySlider_ValueChanged"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Value, ElementName=CompactOpacitySlider, StringFormat={}{0:P0}}"
+                                       FontSize="11" Foreground="#555555"
+                                       VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        </Grid>
                     </StackPanel>
                 </GroupBox>
 
@@ -135,7 +183,7 @@
                     <StackPanel Margin="8">
                         <TextBlock>
                             <Run Text="Version: " FontWeight="SemiBold"/>
-                            <Run Text="0.9.0"/>
+                            <Run x:Name="VersionRun"/>
                         </TextBlock>
                         <TextBlock Margin="0,4,0,0">
                             <Run Text="Developed by " FontWeight="SemiBold"/>

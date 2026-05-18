@@ -1,35 +1,42 @@
 using System.IO;
 using System.Windows;
-using BG3MM_UpdateHelper.Services;
+using System.Windows.Input;
 using BG3MM_UpdateHelper.ViewModels;
 
-namespace BG3MM_UpdateHelper;
+namespace BG3MM_UpdateHelper.Views;
 
-public partial class MainWindow : Window
+public partial class CompactWindow : Window
 {
     private readonly MainWindowViewModel _vm;
 
-    private static readonly string[] SupportedArchiveExtensions = [".zip", ".7z", ".rar"];
-    private static readonly string[] SupportedExtensions        = [".zip", ".7z", ".rar", ".pak"];
+    private static readonly string[] SupportedExtensions = [".zip", ".7z", ".rar", ".pak"];
 
-    public MainWindow()
+    public CompactWindow(MainWindowViewModel vm)
     {
         InitializeComponent();
-        _vm = new MainWindowViewModel(this);
-        DataContext = _vm;
+        _vm         = vm;
+        DataContext = vm;
     }
 
-    public void OpenSettingsOnStartup()
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        Dispatcher.InvokeAsync(() => _vm.OpenSettingsCommand.Execute(null));
+        DragOverlay.Visibility = Visibility.Collapsed;
+        if (e.ButtonState == MouseButtonState.Pressed)
+            DragMove();
+    }
+
+    protected override void OnLocationChanged(EventArgs e)
+    {
+        base.OnLocationChanged(e);
+        _vm.SaveCompactPosition(Left, Top);
+    }
+
+    private void Window_Deactivated(object sender, EventArgs e)
+    {
+        Topmost = true;
     }
 
     // === Drag & Drop ===
-
-    private void Window_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        DragOverlay.Visibility = Visibility.Collapsed;
-    }
 
     private void Window_DragEnter(object sender, DragEventArgs e)
     {
@@ -39,7 +46,6 @@ public partial class MainWindow : Window
 
     private void Window_DragLeave(object sender, DragEventArgs e)
     {
-        // Only hide when leaving the window entirely
         var pos = e.GetPosition(this);
         if (pos.X <= 0 || pos.Y <= 0 || pos.X >= ActualWidth || pos.Y >= ActualHeight)
             DragOverlay.Visibility = Visibility.Collapsed;
@@ -47,9 +53,7 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = GetDroppedFiles(e).Any()
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
+        e.Effects = GetDroppedFiles(e).Any() ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -60,9 +64,8 @@ public partial class MainWindow : Window
             DragOverlay.Visibility = Visibility.Collapsed;
 
             var files = GetDroppedFiles(e).ToList();
+            var infos = new List<Services.ArchiveSourceInfo>();
 
-            // Analyze all files first, then enqueue
-            var infos = new List<ArchiveSourceInfo>();
             foreach (var path in files)
             {
                 var ext = Path.GetExtension(path).ToLowerInvariant();
@@ -72,7 +75,7 @@ public partial class MainWindow : Window
                     if (pakInfo == null)
                     {
                         MessageBox.Show(
-                            $"{System.IO.Path.GetFileName(path)}\n\nThis does not appear to be a BG3 mod file.",
+                            $"{Path.GetFileName(path)}\n\nThis does not appear to be a BG3 mod file.",
                             "Not a BG3 Mod", MessageBoxButton.OK, MessageBoxImage.Warning);
                         continue;
                     }
@@ -85,7 +88,6 @@ public partial class MainWindow : Window
                 }
             }
 
-            // Enqueue all, then process once
             foreach (var info in infos)
                 _vm.AddToInstallQueue(info);
 
@@ -93,7 +95,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Logger.Error($"MainWindow.Window_Drop failed: {ex.Message}");
+            Services.Logger.Error($"CompactWindow.Window_Drop failed: {ex.Message}");
             DragOverlay.Visibility = Visibility.Collapsed;
         }
     }

@@ -17,7 +17,10 @@ namespace BG3MM_UpdateHelper.Services;
 /// </summary>
 public class ModioApi
 {
-    private static readonly HttpClient _http = new();
+    private static readonly HttpClient _http = HttpClientFactory.Shared;
+
+    private static readonly string _appVersion =
+        typeof(ModioApi).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     private readonly string _apiKey;
 
@@ -31,7 +34,7 @@ public class ModioApi
 
     public bool CanMakeRequest() => !string.IsNullOrWhiteSpace(_apiKey);
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // === Public API ===
 
     /// <summary>
     /// Fetches metadata for a mod by its PublishHandle (= mod.io global mod ID).
@@ -45,45 +48,53 @@ public class ModioApi
         try
         {
             var obj = JObject.Parse(json);
-
-            // The "modfile" sub-object contains the latest file info
-            var modfile = obj["modfile"] as JObject;
-
-            // Fall back to platforms[].modfile_live when modfile is an empty object
-            if (modfile == null || !modfile.HasValues)
-            {
-                var platforms = obj["platforms"] as JArray;
-                var liveFileId = platforms
-                    ?.Select(p => p["modfile_live"]?.Value<long?>())
-                    .FirstOrDefault(id => id.HasValue && id.Value > 0);
-
-                if (liveFileId.HasValue)
-                {
-                    var fileJson = await GetAsync(
-                        $"/v1/games/{Constants.MODIO_GAME_ID}/mods/{publishHandle}/files/{liveFileId.Value}");
-                    if (fileJson != null)
-                        modfile = JObject.Parse(fileJson);
-                }
-            }
-
-            return new ModioModData
-            {
-                ModId         = publishHandle,
-                Name          = obj["name"]?.Value<string>() ?? "",
-                Summary       = obj["summary"]?.Value<string>() ?? "",
-                ProfileUrl    = obj["profile_url"]?.Value<string>() ?? "",
-                LatestVersion = modfile?["version"]?.Value<string>() ?? "",
-                UpdatedAt     = DateTimeOffset
-                    .FromUnixTimeSeconds(obj["date_updated"]?.Value<long>() ?? 0)
-                    .UtcDateTime,
-                LatestFileId  = modfile?["id"]?.Value<long>() ?? 0
-            };
+            return await BuildModioDataAsync(obj);
         }
         catch (Exception ex)
         {
             Logger.Error($"ModioApi.GetModInfoAsync({publishHandle}) parse error: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Shared parser. Applies platforms[].modfile_live fallback when modfile is empty.
+    /// May make one additional API call when fallback is triggered.
+    /// </summary>
+    private async Task<ModioModData> BuildModioDataAsync(JObject mod)
+    {
+        var id      = mod["id"]?.Value<ulong>() ?? 0;
+        var modfile = mod["modfile"] as JObject;
+
+        // Fall back to platforms[].modfile_live when modfile is missing or empty
+        if (modfile == null || !modfile.HasValues)
+        {
+            var platforms = mod["platforms"] as JArray;
+            var liveFileId = platforms
+                ?.Select(p => p["modfile_live"]?.Value<long?>())
+                .FirstOrDefault(fid => fid.HasValue && fid.Value > 0);
+
+            if (liveFileId.HasValue)
+            {
+                var fileJson = await GetAsync(
+                    $"/v1/games/{Constants.MODIO_GAME_ID}/mods/{id}/files/{liveFileId.Value}");
+                if (fileJson != null)
+                    modfile = JObject.Parse(fileJson);
+            }
+        }
+
+        return new ModioModData
+        {
+            ModId         = id,
+            Name          = mod["name"]?.Value<string>() ?? "",
+            Summary       = mod["summary"]?.Value<string>() ?? "",
+            ProfileUrl    = mod["profile_url"]?.Value<string>() ?? "",
+            LatestVersion = modfile?["version"]?.Value<string>() ?? "",
+            UpdatedAt     = DateTimeOffset
+                .FromUnixTimeSeconds(mod["date_updated"]?.Value<long>() ?? 0)
+                .UtcDateTime,
+            LatestFileId  = modfile?["id"]?.Value<long>() ?? 0
+        };
     }
 
     /// <summary>
@@ -121,11 +132,12 @@ public class ModioApi
     }
 
 
-    // ── Batch query ───────────────────────────────────────────────────────
+    // === Batch query ===
 
     /// <summary>
     /// Fetches metadata for multiple mods in batches of 100.
     /// Far more efficient than individual calls for cache refresh.
+    /// Applies the same modfile_live fallback as single-mod lookup.
     /// </summary>
     public async Task<Dictionary<ulong, ModioModData>> GetModsBatchAsync(
         IEnumerable<ulong> publishHandles)
@@ -144,26 +156,14 @@ public class ModioApi
 
             try
             {
-                var arr = Newtonsoft.Json.Linq.JObject.Parse(json)["data"]
-                          as Newtonsoft.Json.Linq.JArray;
+                var arr = JObject.Parse(json)["data"] as JArray;
                 if (arr == null) continue;
 
-                foreach (var mod in arr)
+                foreach (var mod in arr.OfType<JObject>())
                 {
-                    var id      = mod["id"]?.Value<ulong>() ?? 0;
-                    var modfile = mod["modfile"] as Newtonsoft.Json.Linq.JObject;
-                    result[id]  = new ModioModData
-                    {
-                        ModId         = id,
-                        Name          = mod["name"]?.Value<string>() ?? "",
-                        Summary       = mod["summary"]?.Value<string>() ?? "",
-                        ProfileUrl    = mod["profile_url"]?.Value<string>() ?? "",
-                        LatestVersion = modfile?["version"]?.Value<string>() ?? "",
-                        UpdatedAt     = DateTimeOffset
-                            .FromUnixTimeSeconds(mod["date_updated"]?.Value<long>() ?? 0)
-                            .UtcDateTime,
-                        LatestFileId  = modfile?["id"]?.Value<long>() ?? 0
-                    };
+                    var data = await BuildModioDataAsync(mod);
+                    if (data.ModId > 0)
+                        result[data.ModId] = data;
                 }
             }
             catch (Exception ex)
@@ -175,7 +175,7 @@ public class ModioApi
         return result;
     }
 
-    // ── Cache helpers ─────────────────────────────────────────────────────
+    // === Cache helpers ===
 
 
     public static ModioCachedData LoadCache()
@@ -203,7 +203,7 @@ public class ModioApi
         }
     }
 
-    // ── HTTP internals ────────────────────────────────────────────────────
+    // === HTTP internals ===
 
     /// <summary>
     /// Performs a GET request against the mod.io API.
@@ -224,7 +224,7 @@ public class ModioApi
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("User-Agent", "BG3MM_UpdateHelper/0.1");
+            request.Headers.Add("User-Agent", $"BG3MM_UpdateHelper/{_appVersion}");
 
             using var response = await _http.SendAsync(request);
 

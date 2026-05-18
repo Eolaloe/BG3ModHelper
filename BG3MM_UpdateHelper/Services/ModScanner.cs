@@ -88,7 +88,7 @@ public static class ModScanner
         return results;
     }
 
-    // ── .pak parsing ──────────────────────────────────────────────────────
+    // === .pak parsing ===
 
     private static InstalledMod? ParsePak(string pakPath)
     {
@@ -132,7 +132,7 @@ public static class ModScanner
         };
     }
 
-    // ── XML helpers ───────────────────────────────────────────────────────
+    // === XML helpers ===
 
     private static string XAttr(XElement parent, string key) =>
         parent.Elements("attribute")
@@ -173,7 +173,7 @@ public static class ModScanner
         return XAttr(moduleInfo, "Version");
     }
 
-    // ── Cache I/O ─────────────────────────────────────────────────────────
+    // === Cache I/O ===
 
     private static InstalledModsCache LoadCache()
     {

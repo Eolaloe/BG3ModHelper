@@ -52,7 +52,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         RegisterNexusCommand = new RelayCommand(RegisterNexus, () => !string.IsNullOrEmpty(_nexusUrlInput.Trim()));
     }
 
-    // ── Identity ──────────────────────────────────────────────────────────
+    // === Identity ===
     public string UUID           => _entry.UUID;
     public string ModName        => _entry.ModName;
     public string CurrentVersion => _entry.CurrentVersion;
@@ -75,7 +75,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         }
     }
 
-    // ── Source ────────────────────────────────────────────────────────────
+    // === Source ===
     public UpdateSource ActiveSource
     {
         get => _activeSource;
@@ -138,14 +138,14 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public string ActivePageUrl =>
         ActiveSource == UpdateSource.MODIO ? _entry.ModioUrl : _entry.NexusUrl;
 
-    // ── Selection ─────────────────────────────────────────────────────────
+    // === Selection ===
     public bool IsSelected
     {
         get => _isSelected;
         set => SetField(ref _isSelected, value);
     }
 
-    // ── Status ────────────────────────────────────────────────────────────
+    // === Status ===
     public UpdateStatus Status
     {
         get => _status;
@@ -182,7 +182,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         Status == UpdateStatus.Failed  ||
         Status == UpdateStatus.Retry;
 
-    // ── Nexus link panel ──────────────────────────────────────────────────
+    // === Nexus link panel ===
     public bool ShowNexusRegisterPanel => IsNexusUnregistered && _isRegisterExpanded;
 
     public string NexusUrlInput
@@ -195,7 +195,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         }
     }
 
-    // ── Commands ──────────────────────────────────────────────────────────
+    // === Commands ===
     public RelayCommand         PrimaryActionCommand { get; }
     public RelayCommand<string> SwitchSourceCommand  { get; }
     public RelayCommand         ToggleSourceCommand  { get; }
@@ -205,7 +205,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public event Action<UpdateEntryViewModel>?      DownloadRequested;
     public event Action<UpdateEntryViewModel, int>? NexusRegistered;
 
-    // ── Download ──────────────────────────────────────────────────────────
+    // === Download ===
 
     /// <summary>Called by parent ViewModel to start the actual download.</summary>
     public async Task ExecuteDownloadAsync()
@@ -324,7 +324,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         return (url, latest.FileId, latest.Name);
     }
 
-    // ── Action dispatch ───────────────────────────────────────────────────
+    // === Action dispatch ===
 
     private void ExecutePrimaryAction()
     {

@@ -3,18 +3,23 @@ using System.Diagnostics;
 using System.Windows;
 using BG3MM_UpdateHelper.Models;
 using BG3MM_UpdateHelper.Services;
+using BG3MM_UpdateHelper.ViewModels;
 using Microsoft.Win32;
 
 namespace BG3MM_UpdateHelper.Views;
 
 public partial class SettingsWindow : Window
 {
-    private readonly AppSettings _settings;
+    private readonly AppSettings          _settings;
+    private readonly MainWindowViewModel? _vm;
+    private readonly double               _originalOpacity;
 
-    public SettingsWindow(AppSettings settings)
+    public SettingsWindow(AppSettings settings, MainWindowViewModel? vm = null)
     {
         InitializeComponent();
-        _settings = settings;
+        _settings        = settings;
+        _vm              = vm;
+        _originalOpacity = settings.CompactOpacity;
         LoadToUI();
     }
 
@@ -24,8 +29,8 @@ public partial class SettingsWindow : Window
         ModsPathBox.Text     = !string.IsNullOrEmpty(_settings.ModsFolderPath)
             ? _settings.ModsFolderPath
             : PathDiscovery.GetDefaultModsFolder();
-        NexusKeyBox.Text     = _settings.NexusAPIKey;
-        ModioKeyBox.Text     = _settings.ModioAPIKey;
+        NexusKeyBox.Password = _settings.NexusAPIKey;
+        ModioKeyBox.Password = _settings.ModioAPIKey;
         BackupCheckBox.IsChecked = _settings.BackupBeforeUpdate;
         DataFolderText.Text  = SettingsStore.GetDataFolder();
         DataFolderLink.NavigateUri    = new Uri(SettingsStore.GetDataFolder());
@@ -44,9 +49,14 @@ public partial class SettingsWindow : Window
         }
 
         FolderWatchCheckBox.IsChecked = _settings.FolderWatchEnabled;
+        DeleteSourceCheckBox.IsChecked = _settings.DeleteSourceAfterInstall;
         WatchFolderBox.Text = !string.IsNullOrEmpty(_settings.WatchedDownloadFolder)
             ? _settings.WatchedDownloadFolder
             : BG3MM_UpdateHelper.Services.FolderWatcherService.GetDefaultDownloadsFolder();
+        CompactOpacitySlider.Value = _settings.CompactOpacity;
+
+        VersionRun.Text = typeof(SettingsWindow).Assembly
+            .GetName().Version?.ToString(3) ?? "0.0.0";
     }
 
     private void BrowseBG3MM_Click(object sender, RoutedEventArgs e)
@@ -162,11 +172,17 @@ public partial class SettingsWindow : Window
         var modsPath = ModsPathBox.Text.Trim();
         _settings.ModsFolderPath = modsPath == PathDiscovery.GetDefaultModsFolder() ? "" : modsPath;
 
-        _settings.NexusAPIKey        = NexusKeyBox.Text.Trim();
-        _settings.ModioAPIKey        = ModioKeyBox.Text.Trim();
+        _settings.NexusAPIKey        = NexusKeyBox.Visibility == Visibility.Visible
+            ? NexusKeyBox.Password.Trim()
+            : NexusKeyBoxPlain.Text.Trim();
+        _settings.ModioAPIKey        = ModioKeyBox.Visibility == Visibility.Visible
+            ? ModioKeyBox.Password.Trim()
+            : ModioKeyBoxPlain.Text.Trim();
         _settings.BackupBeforeUpdate = BackupCheckBox.IsChecked ?? false;
         _settings.FolderWatchEnabled      = FolderWatchCheckBox.IsChecked ?? false;
+        _settings.DeleteSourceAfterInstall = DeleteSourceCheckBox.IsChecked ?? false;
         _settings.WatchedDownloadFolder   = WatchFolderBox.Text.Trim();
+        _settings.CompactOpacity          = CompactOpacitySlider.Value;
 
         SettingsStore.Save(_settings);
         Logger.Info("Settings saved");
@@ -175,8 +191,56 @@ public partial class SettingsWindow : Window
         Close();
     }
 
+    private void ToggleNexusKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (NexusKeyBox.Visibility == Visibility.Visible)
+        {
+            NexusKeyBoxPlain.Text       = NexusKeyBox.Password;
+            NexusKeyBox.Visibility      = Visibility.Collapsed;
+            NexusKeyBoxPlain.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            NexusKeyBox.Password        = NexusKeyBoxPlain.Text;
+            NexusKeyBoxPlain.Visibility = Visibility.Collapsed;
+            NexusKeyBox.Visibility      = Visibility.Visible;
+        }
+    }
+
+    private void ToggleModioKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (ModioKeyBox.Visibility == Visibility.Visible)
+        {
+            ModioKeyBoxPlain.Text       = ModioKeyBox.Password;
+            ModioKeyBox.Visibility      = Visibility.Collapsed;
+            ModioKeyBoxPlain.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ModioKeyBox.Password        = ModioKeyBoxPlain.Text;
+            ModioKeyBoxPlain.Visibility = Visibility.Collapsed;
+            ModioKeyBox.Visibility      = Visibility.Visible;
+        }
+    }
+
+    private void CompactOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Real-time preview — update VM so CompactWindow reflects immediately
+        if (_vm != null)
+        {
+            _settings.CompactOpacity = e.NewValue;
+            _vm.NotifyCompactOpacityChanged();
+        }
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
+        // Restore original opacity if user cancels
+        if (_vm != null && Math.Abs(_settings.CompactOpacity - _originalOpacity) > 0.001)
+        {
+            _settings.CompactOpacity = _originalOpacity;
+            _vm.NotifyCompactOpacityChanged();
+        }
         DialogResult = false;
         Close();
     }

@@ -8,7 +8,7 @@ using SharpCompress.Common;
 
 namespace BG3MM_UpdateHelper.Services;
 
-// ── Data ─────────────────────────────────────────────────────────────────────
+// === Data ===
 
 /// <summary>
 /// Source detection result for an archive dropped or detected in the watch folder.
@@ -40,7 +40,7 @@ public sealed record ArchiveSourceInfo(
     string  ModVersion
 );
 
-// ── Service ───────────────────────────────────────────────────────────────────
+// === Service ===
 
 /// <summary>
 /// Shared archive-processing utilities (Downloader, FolderWatcher, drag-and-drop).
@@ -52,11 +52,12 @@ public sealed class FolderWatcherService : IDisposable
     private readonly Func<ArchiveSourceInfo, Task>       _onDetected;
     private readonly List<FileSystemWatcher>             _watchers = new();
     private readonly Dictionary<string, DateTime>        _recent   = new();
+    private readonly object                              _recentLock = new();
     private const    int                                 DupGuardSeconds = 5;
 
     private static readonly string[] SupportedExtensions = { ".zip", ".7z", ".rar" };
 
-    // ── Zip filename patterns ──────────────────────────────────────────────────
+    // === Zip filename patterns ===
 
     /// <summary>
     /// Nexus enforced naming: ModName-{modId}-{v1}-{v2}-{v3}-{v4}-{timestamp}.zip
@@ -83,7 +84,7 @@ public sealed class FolderWatcherService : IDisposable
         _onDetected = onDetected;
     }
 
-    // ── Watcher lifecycle ────────────────────────────────────────────────────
+    // === Watcher lifecycle ===
 
     public void Start(string folderPath)
     {
@@ -112,24 +113,30 @@ public sealed class FolderWatcherService : IDisposable
 
     public void Dispose() => Stop();
 
-    // ── OS default Downloads folder ──────────────────────────────────────────
+    // === OS default Downloads folder ===
 
     public static string GetDefaultDownloadsFolder() =>
         Path.Combine(Environment.GetFolderPath(
             Environment.SpecialFolder.UserProfile), "Downloads");
 
-    // ── FileSystemWatcher callback ────────────────────────────────────────────
+    // === FileSystemWatcher callback ===
 
-    private async void OnFileCreated(object sender, FileSystemEventArgs e) =>
-        await HandleNewFile(e.FullPath);
+    private async void OnFileCreated(object sender, FileSystemEventArgs e)
+    {
+        try { await HandleNewFile(e.FullPath); }
+        catch (Exception ex) { Logger.Error($"OnFileCreated failed: {ex.Message}"); }
+    }
 
-    private async void OnFileRenamed(object sender, RenamedEventArgs e) =>
-        await HandleNewFile(e.FullPath);
+    private async void OnFileRenamed(object sender, RenamedEventArgs e)
+    {
+        try { await HandleNewFile(e.FullPath); }
+        catch (Exception ex) { Logger.Error($"OnFileRenamed failed: {ex.Message}"); }
+    }
 
     private async Task HandleNewFile(string path)
     {
 
-        lock (_recent)
+        lock (_recentLock)
         {
             if (_recent.TryGetValue(path, out var last) &&
                 (DateTime.UtcNow - last).TotalSeconds < DupGuardSeconds)
@@ -137,18 +144,70 @@ public sealed class FolderWatcherService : IDisposable
             _recent[path] = DateTime.UtcNow;
         }
 
-        // Wait for download completion and file lock release
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // Wait until file size is stable (download/copy complete)
+        if (!await WaitForStableFileAsync(path))
+        {
+            Logger.Warn($"FolderWatcher: file never stabilized — {Path.GetFileName(path)}");
+            return;
+        }
 
-        if (!File.Exists(path)) return;
+        // Retry analysis with backoff — file may still be locked by AV/etc.
+        ArchiveSourceInfo? info = null;
+        int[] backoffSeconds = { 1, 2, 4, 8 };
+        for (int attempt = 0; attempt < backoffSeconds.Length; attempt++)
+        {
+            info = await Task.Run(() => AnalyzeArchive(path));
+            if (info != null) break;
+            if (attempt < backoffSeconds.Length - 1)
+                await Task.Delay(TimeSpan.FromSeconds(backoffSeconds[attempt]));
+        }
 
-        var info = await Task.Run(() => AnalyzeArchive(path));
-        if (info == null) return;
+        if (info == null)
+        {
+            Logger.Warn($"FolderWatcher: gave up on {Path.GetFileName(path)} after retries");
+            return;
+        }
 
         await _onDetected(info);
     }
 
-    // ── Archive analysis ──────────────────────────────────────────────────────
+    /// <summary>
+    /// Polls file size every 500ms until stable for 3 consecutive checks (~1.5s),
+    /// or until maxWaitSec elapses. Returns false on timeout or file deletion.
+    /// </summary>
+    private static async Task<bool> WaitForStableFileAsync(string path, int maxWaitSec = 60)
+    {
+        long lastSize    = -1;
+        int  stableCount = 0;
+        var  deadline    = DateTime.UtcNow.AddSeconds(maxWaitSec);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!File.Exists(path)) return false;
+            try
+            {
+                var size = new FileInfo(path).Length;
+                if (size == lastSize)
+                {
+                    if (++stableCount >= 3) return true;
+                }
+                else
+                {
+                    stableCount = 0;
+                    lastSize    = size;
+                }
+            }
+            catch
+            {
+                // File locked or transient IO error — treat as unstable
+                stableCount = 0;
+            }
+            await Task.Delay(500);
+        }
+        return false;
+    }
+
+    // === Archive analysis ===
 
     /// <summary>
     /// Two-step source detection:
@@ -182,7 +241,8 @@ public sealed class FolderWatcherService : IDisposable
             }
             finally
             {
-                try { Directory.Delete(tempDir, recursive: true); } catch { }
+                try { Directory.Delete(tempDir, recursive: true); }
+                catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
             }
         }
         catch (Exception ex)
@@ -192,7 +252,7 @@ public sealed class FolderWatcherService : IDisposable
         }
     }
 
-    // ── Zip filename analysis ────────────────────────────────────────────────
+    // === Zip filename analysis ===
 
     /// <summary>
     /// Extracts source hint and modId from the zip filename.
@@ -215,7 +275,7 @@ public sealed class FolderWatcherService : IDisposable
         return (null, 0);
     }
 
-    // ── Public static utilities (shared with Downloader) ─────────────────────
+    // === Public static utilities (shared with Downloader) ===
 
     /// <summary>Returns true if the archive contains at least one .pak file.</summary>
     public static bool ContainsPak(string archivePath)
@@ -260,7 +320,7 @@ public sealed class FolderWatcherService : IDisposable
         return extracted;
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    // === Private helpers ===
 
     private static string? FindFirstPakName(string archivePath)
     {

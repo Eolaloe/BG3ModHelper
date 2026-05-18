@@ -30,7 +30,7 @@ public class InstallConfirmViewModel : ViewModelBase
         IgnoreAllCommand   = new RelayCommand(OnIgnoreAll, () => ShowQueueInfo);
     }
 
-    // ── Queue info ────────────────────────────────────────────────────────
+    // === Queue info ===
 
     public int  CurrentIndex { get; }
 
@@ -73,7 +73,7 @@ public class InstallConfirmViewModel : ViewModelBase
         IgnoreAllCommand.RaiseCanExecuteChanged();
     }
 
-    // ── Display ───────────────────────────────────────────────────────────
+    // === Display ===
 
     public string  ModName     => _info.ModName;
     public string  ModVersion  => _info.ModVersion;
@@ -118,13 +118,13 @@ public class InstallConfirmViewModel : ViewModelBase
     public bool NexusSelected => SelectedSource == "Nexus";
     public bool ModioSelected => SelectedSource == "ModIO";
 
-    // ── Result ────────────────────────────────────────────────────────────
+    // === Result ===
 
     public bool   DialogResult    { get; private set; }
     public string FinalSource     => SelectedSource;
     public bool   InstallAllFired { get; private set; }
 
-    // ── Commands ──────────────────────────────────────────────────────────
+    // === Commands ===
 
     public RelayCommand InstallCommand    { get; }
     public RelayCommand IgnoreCommand     { get; }
@@ -136,7 +136,7 @@ public class InstallConfirmViewModel : ViewModelBase
     public event Func<Task>?   InstallAllRequested;
     public event Action?       IgnoreAllRequested;
 
-    // ── Actions ───────────────────────────────────────────────────────────
+    // === Actions ===
 
     private void SwitchSource()
     {

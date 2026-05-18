@@ -17,7 +17,7 @@ public class DownloadHistoryStore
 
     private readonly List<DownloadHistoryEntry> _entries = new();
 
-    // ── Initialization ────────────────────────────────────────────────────
+    // === Initialization ===
 
     public void Load()
     {
@@ -39,7 +39,7 @@ public class DownloadHistoryStore
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────
+    // === Public API ===
 
     /// <summary>
     /// Adds a new entry and saves to disk.
@@ -55,7 +55,7 @@ public class DownloadHistoryStore
     /// <summary>Returns all entries, newest first.</summary>
     public IReadOnlyList<DownloadHistoryEntry> GetAll() => _entries.AsReadOnly();
 
-    // ── Helpers ───────────────────────────────────────────────────────────
+    // === Helpers ===
 
     private void Trim()
     {

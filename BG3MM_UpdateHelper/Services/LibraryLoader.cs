@@ -37,12 +37,12 @@ public static class LibraryLoader
 
         _libFolder = libFolder;
 
-        // ── Native dlls (LSLibNative.dll, Ijwhost.dll, LZ4.dll …) ──────────
+        // === Native dlls (LSLibNative.dll, Ijwhost.dll, LZ4.dll …) ===
         // SetDllDirectory tells Windows to search this folder when loading
         // any native dll, which covers all P/Invoke and C++/CLI loads.
         SetDllDirectory(libFolder);
 
-        // ── Managed dlls (LSLib.dll, SharpGLTF.*.dll …) ─────────────────────
+        // === Managed dlls (LSLib.dll, SharpGLTF.*.dll …) ===
         // AssemblyResolve fires when the CLR cannot locate an assembly via
         // its normal probing paths. We redirect it to _Lib.
         AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
@@ -54,7 +54,7 @@ public static class LibraryLoader
 
     public static bool IsInitialized => _initialized;
 
-    // ── Private helpers ───────────────────────────────────────────────────
+    // === Private helpers ===
 
     private static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
     {
