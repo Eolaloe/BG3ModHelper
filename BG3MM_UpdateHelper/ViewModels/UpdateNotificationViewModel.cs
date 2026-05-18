@@ -13,6 +13,7 @@ public class UpdateNotificationViewModel : ViewModelBase
     private readonly ModioApi? _modioApi;
     private readonly NexusApi? _nexusApi;
     private readonly ModFileIdStore? _fileIdStore;
+    private readonly DownloadHistoryStore? _historyStore;
     private readonly Func<Task<List<ModUpdateEntry>>>? _reloadFunc;
 
     public UpdateNotificationViewModel(
@@ -23,6 +24,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         ModioApi? modioApi                = null,
         NexusApi? nexusApi                = null,
         ModFileIdStore? fileIdStore       = null,
+        DownloadHistoryStore? historyStore = null,
         Func<Task<List<ModUpdateEntry>>>? reloadFunc = null)
     {
         _nexusIsPremium = nexusIsPremium;
@@ -31,12 +33,13 @@ public class UpdateNotificationViewModel : ViewModelBase
         _modioApi       = modioApi;
         _nexusApi       = nexusApi;
         _fileIdStore    = fileIdStore;
+        _historyStore   = historyStore;
         _reloadFunc     = reloadFunc;
 
         Entries = new ObservableCollection<UpdateEntryViewModel>(
             updates.Select(u =>
             {
-                var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore);
+                var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore, historyStore);
                 vm.DownloadRequested += OnDownloadRequested;
                 vm.NexusRegistered   += OnNexusRegistered;
                 return vm;
@@ -125,7 +128,7 @@ public class UpdateNotificationViewModel : ViewModelBase
             foreach (var u in newUpdates.Where(u => !existing.Contains(u.UUID)))
             {
                 var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
-                    _backupEnabled, _modioApi, _nexusApi, _fileIdStore);
+                    _backupEnabled, _modioApi, _nexusApi, _fileIdStore, _historyStore);
                 vm.DownloadRequested += OnDownloadRequested;
                 vm.NexusRegistered   += OnNexusRegistered;
                 Entries.Add(vm);

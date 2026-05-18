@@ -1,5 +1,4 @@
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
@@ -100,6 +99,58 @@ public static class Downloader
 
     // ── Download ──────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Installs a mod from a local archive (folder watcher / drag-and-drop).
+    /// Skips download — goes straight to extract → backup → install.
+    /// Returns the installed pak path.
+    /// </summary>
+    public static async Task<string> InstallLocalArchiveAsync(
+        string archivePath,
+        string modsFolder,
+        bool   backupEnabled,
+        IProgress<DownloadProgress>? progress = null)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "BG3MM_UpdateHelper",
+                                   Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            progress?.Report(new DownloadProgress("Extracting...", 50));
+            var pakFiles = FolderWatcherService.ExtractPakFiles(archivePath, tempDir);
+            if (pakFiles.Count == 0)
+                throw new InvalidOperationException("No .pak files found in archive.");
+
+            var sourceFile = pakFiles[0];
+            var destPath   = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
+
+            if (backupEnabled && File.Exists(destPath))
+            {
+                progress?.Report(new DownloadProgress("Backing up...", 80));
+                BackupExistingPak(destPath);
+            }
+
+            progress?.Report(new DownloadProgress("Applying...", 95));
+            try
+            {
+                File.Copy(sourceFile, destPath, overwrite: true);
+            }
+            catch (IOException ex)
+            {
+                throw new PakInUseException(Path.GetFileName(destPath), ex);
+            }
+
+            progress?.Report(new DownloadProgress("Done", 100));
+            Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} from local archive");
+
+            InvalidateCache(destPath, destPath);
+            return destPath;
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
     private static async Task DownloadFileAsync(
         string url,
         string destPath,
@@ -139,34 +190,15 @@ public static class Downloader
     // ── Extract ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Extracts all .pak files from the zip into extractDir.
-    /// Handles both flat zips (pak at root) and nested zips (pak inside folder).
+    /// Extracts all .pak files from the archive into extractDir.
+    /// Handles both flat and nested archives. Supports zip, 7z, rar.
     /// </summary>
-    private static List<string> ExtractPakFiles(string zipPath, string extractDir)
-    {
-        using var archive = ZipFile.OpenRead(zipPath);
-
-        var pakEntries = archive.Entries
-            .Where(e => e.Name.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (pakEntries.Count == 0)
-        {
-            Logger.Warn($"Downloader: no .pak in zip — entries: " +
-                        string.Join(", ", archive.Entries.Take(10).Select(e => e.Name)));
-        }
-
-        var extracted = new List<string>();
-        foreach (var entry in pakEntries)
-        {
-            var dest = Path.Combine(extractDir, entry.Name);
-            entry.ExtractToFile(dest, overwrite: true);
-            extracted.Add(dest);
-            Logger.Info($"Downloader: extracted {entry.Name}");
-        }
-
-        return extracted;
-    }
+    /// <summary>
+    /// Extracts all .pak files from the archive into extractDir.
+    /// Delegates to FolderWatcherService (shared logic, supports zip/7z/rar).
+    /// </summary>
+    private static List<string> ExtractPakFiles(string archivePath, string extractDir) =>
+        FolderWatcherService.ExtractPakFiles(archivePath, extractDir);
 
     // ── Cache invalidation ───────────────────────────────────────────────
 

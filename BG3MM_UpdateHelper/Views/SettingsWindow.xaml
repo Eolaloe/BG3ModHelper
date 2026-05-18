@@ -56,7 +56,14 @@
                 <!-- API Keys -->
                 <GroupBox Header="API Keys" Margin="0,0,0,12">
                     <StackPanel Margin="8">
-                        <TextBlock Text="Nexus Mods" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <!-- Nexus Mods + Free/Premium badge -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                            <TextBlock Text="Nexus Mods" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Border x:Name="NexusTierBadge" CornerRadius="3" Padding="6,2" Margin="6,0,0,0"
+                                    VerticalAlignment="Center" Visibility="Collapsed">
+                                <TextBlock x:Name="NexusTierText" Foreground="White" FontSize="10" FontWeight="SemiBold"/>
+                            </Border>
+                        </StackPanel>
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -97,6 +104,29 @@
                                   Content="Create .pak.bak backup before overwriting a mod"
                                   Margin="0,4"/>
 
+                        <CheckBox x:Name="FolderWatchCheckBox"
+                                  Content="Auto-install from download folder"
+                                  Margin="0,12,0,8"
+                                  Click="FolderWatch_Checked"/>
+
+                        <!-- Watch folder path — always accessible -->
+                        <StackPanel Margin="20,0,0,0">
+                            <TextBlock Text="Watch Folder" FontWeight="SemiBold" Margin="0,0,0,4"
+                                       Foreground="#555555"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="WatchFolderBox"
+                                         IsReadOnly="True" Padding="4"
+                                         VerticalContentAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Change..." Margin="6,0,0,0" Padding="12,4"
+                                        Click="BrowseWatchFolder_Click"/>
+                            </Grid>
+                            <TextBlock Text="Only newly created archive files are monitored while the app is running."
+                                       Foreground="#888888" FontSize="11" Margin="0,4,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </GroupBox>
 

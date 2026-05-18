@@ -14,6 +14,7 @@ public class UpdateEntryViewModel : ViewModelBase
     private readonly ModioApi?       _modioApi;
     private readonly NexusApi?       _nexusApi;
     private readonly ModFileIdStore? _fileIdStore;
+    private readonly DownloadHistoryStore? _historyStore;
 
     private bool         _isSelected;
     private UpdateStatus _status;
@@ -29,7 +30,8 @@ public class UpdateEntryViewModel : ViewModelBase
         bool backupEnabled           = false,
         ModioApi? modioApi           = null,
         NexusApi? nexusApi           = null,
-        ModFileIdStore? fileIdStore  = null)
+        ModFileIdStore? fileIdStore  = null,
+        DownloadHistoryStore? historyStore = null)
     {
         _entry          = entry;
         _nexusIsPremium = nexusIsPremium;
@@ -38,6 +40,7 @@ public class UpdateEntryViewModel : ViewModelBase
         _modioApi       = modioApi;
         _nexusApi       = nexusApi;
         _fileIdStore    = fileIdStore;
+        _historyStore   = historyStore;
         _activeSource   = entry.DefaultSource;
         _status         = UpdateStatus.Pending;
         _isSelected     = entry.CanAutoDownload;
@@ -252,6 +255,7 @@ public class UpdateEntryViewModel : ViewModelBase
             Status     = UpdateStatus.Updated;
             StatusText = "Updated";
             Logger.Info($"Download complete: {ModName}");
+            RecordHistory(success: true);
         }
         catch (PakInUseException ex)
         {
@@ -276,6 +280,7 @@ public class UpdateEntryViewModel : ViewModelBase
             Status     = UpdateStatus.Failed;
             StatusText = "Failed";
             Logger.Error($"Download failed for {ModName}: {ex.Message}");
+            RecordHistory(success: false);
 
             _ = Application.Current.Dispatcher.InvokeAsync(() =>
                 MessageBox.Show(
@@ -373,7 +378,43 @@ public class UpdateEntryViewModel : ViewModelBase
     {
         var url = ActivePageUrl;
         if (!string.IsNullOrEmpty(url))
+        {
+            if (!CanAutoDownload && ActiveSource == UpdateSource.NEXUSMODS)
+                url = url.Contains('?') ? $"{url}&tab=files" : $"{url}?tab=files";
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+    }
+
+    private void RecordHistory(bool success)
+    {
+        if (_historyStore == null) return;
+
+        var source = ActiveSource switch
+        {
+            UpdateSource.MODIO     => "ModIO",
+            UpdateSource.NEXUSMODS => "Nexus",
+            _                      => "Others"
+        };
+
+        var pageUrl = ActiveSource switch
+        {
+            UpdateSource.NEXUSMODS when _entry.NexusModId.HasValue =>
+                $"https://www.nexusmods.com/baldursgate3/mods/{_entry.NexusModId.Value}",
+            UpdateSource.MODIO when !string.IsNullOrEmpty(_entry.ModioUrl) =>
+                _entry.ModioUrl,
+            _ => null
+        };
+
+        _historyStore.Add(new DownloadHistoryEntry
+        {
+            DownloadedAt = DateTime.UtcNow,
+            ModName      = ModName,
+            FromVersion  = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
+            ToVersion    = NewVersionDisplay,
+            Source       = source,
+            PageUrl      = pageUrl,
+            Success      = success,
+        });
     }
 
     private void RegisterNexus()

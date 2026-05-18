@@ -25,8 +25,10 @@ public class MainWindowViewModel : ViewModelBase
     private bool   _progressIndeterminate = false;
 
     private List<InstalledMod> _installedMods = new();
-    private readonly NexusIdDatabase _nexusIdDb   = new();
-    private readonly ModFileIdStore  _fileIdStore = new();
+    private readonly NexusIdDatabase      _nexusIdDb    = new();
+    private readonly ModFileIdStore       _fileIdStore  = new();
+    private readonly DownloadHistoryStore _historyStore = new();
+    private          FolderWatcherService? _folderWatcher;
 
     public MainWindowViewModel(Window ownerWindow)
     {
@@ -39,11 +41,14 @@ public class MainWindowViewModel : ViewModelBase
         LaunchBG3MMCommand       = new RelayCommand(LaunchBG3MM, CanLaunchBG3MM);
         OpenSettingsCommand      = new RelayCommand(OpenSettings, () => !_isScanning);
         OpenHelpCommand          = new RelayCommand(OpenHelp);
+        OpenHistoryCommand       = new RelayCommand(OpenHistory);
 
         RecentActivities = new ObservableCollection<string>();
         AddActivity("Application started");
 
         _fileIdStore.Load();
+        _historyStore.Load();
+        InitFolderWatcher();
         _ = RefreshModsAsync();
     }
 
@@ -116,6 +121,7 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand LaunchBG3MMCommand       { get; }
     public RelayCommand OpenSettingsCommand      { get; }
     public RelayCommand OpenHelpCommand          { get; }
+    public RelayCommand OpenHistoryCommand       { get; }
 
     // ── Command implementations ───────────────────────────────────────────
 
@@ -189,17 +195,15 @@ public class MainWindowViewModel : ViewModelBase
 
         try
         {
-            // Refresh Nexus Premium status once per day
-            if (hasNexus &&
-                DateTime.UtcNow - _settings.LastPremiumCheck > TimeSpan.FromHours(24))
+            // Refresh Nexus Premium status on every check
+            if (hasNexus)
             {
                 StatusText = "Validating Nexus API key...";
                 var nexus    = new NexusApi(_settings.NexusAPIKey);
                 var userInfo = await nexus.ValidateUserAsync();
                 if (userInfo != null)
                 {
-                    _settings.NexusIsPremium   = userInfo.IsPremium;
-                    _settings.LastPremiumCheck = DateTime.UtcNow;
+                    _settings.NexusIsPremium = userInfo.IsPremium;
                     SettingsStore.Save(_settings);
                 }
             }
@@ -280,6 +284,7 @@ public class MainWindowViewModel : ViewModelBase
                 hasModio ? new ModioApi(_settings.ModioAPIKey) : null,
                 hasNexus ? new NexusApi(_settings.NexusAPIKey) : null,
                 _fileIdStore,
+                _historyStore,
                 reloadFunc);
 
             notificationVm.NexusMappingAdded += (uuid, modId, fileId) =>
@@ -292,7 +297,7 @@ public class MainWindowViewModel : ViewModelBase
             {
                 Owner = _ownerWindow
             };
-            window.ShowDialog();
+            window.Show();
         }
         catch (Exception ex)
         {
@@ -349,6 +354,7 @@ public class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(BG3MMFolderPath));
         OnPropertyChanged(nameof(ModsFolderDisplay));
         AddActivity("Settings updated");
+        InitFolderWatcher();
         _ = RefreshModsAsync();
     }
 
@@ -369,6 +375,203 @@ public class MainWindowViewModel : ViewModelBase
             "- Nexus Free: mod page opens for manual download",
             "Help", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+
+    private void OpenHistory()
+    {
+        var vm     = new ViewModels.DownloadHistoryViewModel(_historyStore);
+        var window = new Views.DownloadHistoryWindow(vm) { Owner = _ownerWindow };
+        window.Show();
+    }
+
+    // ── Folder Watcher ────────────────────────────────────────────────────────
+
+    /// <summary>Called from drag-and-drop — reuses FolderWatcherService.</summary>
+    public ArchiveSourceInfo? AnalyzeDroppedArchive(string archivePath)
+    {
+        if (_folderWatcher != null)
+            return _folderWatcher.AnalyzeArchive(archivePath);
+
+        using var temp = new FolderWatcherService(_nexusIdDb, _ => Task.CompletedTask);
+        return temp.AnalyzeArchive(archivePath);
+    }
+
+    /// <summary>Analyzes a .pak file directly for drag-and-drop install.</summary>
+    public ArchiveSourceInfo? AnalyzePakFile(string pakPath)
+    {
+        if (_folderWatcher != null)
+            return _folderWatcher.AnalyzePakFile(pakPath);
+
+        using var temp = new FolderWatcherService(_nexusIdDb, _ => Task.CompletedTask);
+        return temp.AnalyzePakFile(pakPath);
+    }
+
+    /// <summary>Enqueues an archive for install — used by drag-and-drop (bulk enqueue).</summary>
+    public void AddToInstallQueue(ArchiveSourceInfo info)
+    {
+        _queueTotal++;
+        _detectQueue.Enqueue(info);
+        var pendingNames = _detectQueue.Skip(1).Select(x => x.ModName).ToList();
+        _activeConfirmVm?.NotifyTotalChanged(_queueTotal, pendingNames);
+    }
+
+    /// <summary>Starts processing the install queue if not already running.</summary>
+    public async Task ProcessInstallQueue()
+    {
+        if (_processingQueue) return;
+
+        // Bring main window to front
+        if (_ownerWindow.WindowState == System.Windows.WindowState.Minimized)
+            _ownerWindow.WindowState = System.Windows.WindowState.Normal;
+        _ownerWindow.Topmost = true;
+        _ownerWindow.Activate();
+        _ownerWindow.Topmost = false;
+
+        _processingQueue = true;
+        int currentIndex = 0;
+
+        while (_detectQueue.Count > 0)
+        {
+            currentIndex++;
+            var next     = _detectQueue.Peek();
+            var remaining = _detectQueue.Skip(1).Select(x => x.ModName).ToList();
+
+            var vm = new ViewModels.InstallConfirmViewModel(next, currentIndex, _queueTotal, remaining);
+            _activeConfirmVm = vm;
+
+            var window = new Views.InstallConfirmWindow(vm) { Owner = _ownerWindow };
+
+            vm.InstallAllRequested += async () =>
+            {
+                window.Close();
+                await InstallLocalArchiveAsync(next, vm.FinalSource);
+                while (_detectQueue.Count > 0)
+                {
+                    var r = _detectQueue.Dequeue();
+                    await InstallLocalArchiveAsync(r, r.Source == "Both" ? r.ZipHintSource ?? r.Source : r.Source);
+                }
+            };
+            vm.IgnoreAllRequested += () =>
+            {
+                _detectQueue.Clear();
+                window.Close();
+            };
+
+            window.ShowDialog();
+            _detectQueue.TryDequeue(out _);
+
+            if (window.Confirmed && !vm.InstallAllFired)
+                await InstallLocalArchiveAsync(next, window.FinalSource);
+        }
+
+        _activeConfirmVm = null;
+        _processingQueue = false;
+        _queueTotal      = 0;
+    }
+
+    private void InitFolderWatcher()
+    {
+        _folderWatcher?.Dispose();
+
+        if (!_settings.FolderWatchEnabled) return;
+
+        var folder = !string.IsNullOrEmpty(_settings.WatchedDownloadFolder)
+            ? _settings.WatchedDownloadFolder
+            : FolderWatcherService.GetDefaultDownloadsFolder();
+
+        _folderWatcher = new FolderWatcherService(_nexusIdDb, OnArchiveDetected);
+        _folderWatcher.Start(folder);
+        Logger.Info($"FolderWatcher started: {folder}");
+    }
+
+    // ── Install confirmation queue ────────────────────────────────────────────
+
+    private readonly Queue<ArchiveSourceInfo>  _detectQueue  = new();
+    private          InstallConfirmViewModel?  _activeConfirmVm;
+    private          bool                      _processingQueue;
+    private          int                       _queueTotal;
+
+    private async Task OnArchiveDetected(ArchiveSourceInfo info)
+    {
+        await Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            AddToInstallQueue(info);
+            await ProcessInstallQueue();
+        });
+    }
+
+    public async Task InstallLocalArchiveAsync(ArchiveSourceInfo info, string finalSource)
+    {
+        var modsFolder = !string.IsNullOrEmpty(_settings.ModsFolderPath)
+            ? _settings.ModsFolderPath
+            : PathDiscovery.GetDefaultModsFolder();
+
+        // Find current version from installed mods
+        var existing = _installedMods.FirstOrDefault(m =>
+            string.Equals(Path.GetFileName(m.PakFilePath), info.PakFileName,
+                          StringComparison.OrdinalIgnoreCase));
+        var fromVersion = existing?.Version ?? "Not installed";
+
+        IsScanning  = true;
+        StatusText  = $"Installing {info.ModName}...";
+        try
+        {
+            var progress = new Progress<DownloadProgress>(p => StatusText = p.Text);
+
+            // pak direct copy vs archive extraction
+            if (Path.GetExtension(info.ArchivePath).ToLowerInvariant() == ".pak")
+            {
+                var destPath = Path.Combine(modsFolder, info.PakFileName);
+                if (_settings.BackupBeforeUpdate && File.Exists(destPath))
+                    File.Copy(destPath, destPath + ".bak", overwrite: true);
+                await Task.Run(() => File.Copy(info.ArchivePath, destPath, overwrite: true));
+                Logger.Info($"pak direct install: {info.PakFileName}");
+            }
+            else
+            {
+                await Downloader.InstallLocalArchiveAsync(
+                    info.ArchivePath, modsFolder, _settings.BackupBeforeUpdate, progress);
+            }
+
+            _historyStore.Add(new Models.DownloadHistoryEntry
+            {
+                DownloadedAt = DateTime.UtcNow,
+                ModName      = info.ModName,
+                FromVersion  = fromVersion,
+                ToVersion    = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
+                Source       = finalSource,
+                PageUrl      = info.NexusPageUrl,
+                Success      = true,
+            });
+
+            AddActivity($"Installed: {info.ModName}");
+            Logger.Info($"Local install complete: {info.ModName}");
+            _ = RefreshModsAsync();
+        }
+        catch (Exception ex)
+        {
+            _historyStore.Add(new Models.DownloadHistoryEntry
+            {
+                DownloadedAt = DateTime.UtcNow,
+                ModName      = info.ModName,
+                FromVersion  = fromVersion,
+                ToVersion    = "—",
+                Source       = finalSource,
+                Success      = false,
+            });
+            MessageBox.Show($"Installation failed:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Logger.Error($"Local install failed: {info.ModName} — {ex.Message}");
+        }
+        finally
+        {
+            IsScanning = false;
+            StatusText = "";
+            ProgressValue = 0;
+        }
+    }
+
+    /// <summary>Restarts folder watcher after settings are saved.</summary>
+    public void RestartFolderWatcher() => InitFolderWatcher();
 
     // ── Mod scanning ──────────────────────────────────────────────────────
 

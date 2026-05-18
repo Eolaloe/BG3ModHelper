@@ -12,4 +12,12 @@ public class AppSettings
 
     /// <summary>Last update check time — persisted so it survives app restarts.</summary>
     public DateTime? LastCheck { get; set; } = null;
+
+    // ── Folder Watcher ────────────────────────────────────────────────────
+
+    /// <summary>Whether download folder auto-install watching is enabled.</summary>
+    public bool   FolderWatchEnabled      { get; set; } = false;
+
+    /// <summary>Path to watch. Empty = OS default Downloads folder.</summary>
+    public string WatchedDownloadFolder   { get; set; } = "";
 }

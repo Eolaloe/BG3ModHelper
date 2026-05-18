@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
@@ -22,6 +22,7 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="SharpCompress" Version="0.48.1" />
 	</ItemGroup>
 
 	<!--

@@ -138,7 +138,7 @@
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="2,0,0,0"/>
 <Grid Grid.Column="5">
-                            <Border MinWidth="44" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <Border MinWidth="46" HorizontalAlignment="Center" VerticalAlignment="Center"
                                     CornerRadius="3" Padding="4,1">
                                 <Border.Background>
                                     <SolidColorBrush Color="{Binding SourceBadgeColor}"/>
