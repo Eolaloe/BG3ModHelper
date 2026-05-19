@@ -43,7 +43,7 @@ public static class ModScanner
                 var modifiedUtc = File.GetLastWriteTimeUtc(pakPath);
 
                 if (cache.Mods.TryGetValue(pakPath, out var entry) &&
-                    entry.PakFileModified == modifiedUtc)
+                    entry.PakFileLastWriteTime == modifiedUtc)
                 {
                     results.Add(entry.ModData);
                 }
@@ -58,7 +58,7 @@ public static class ModScanner
 
                         cache.Mods[pakPath] = new InstalledModCacheEntry
                         {
-                            PakFileModified = modifiedUtc,
+                            PakFileLastWriteTime = modifiedUtc,
                             ModData         = mod
                         };
                         cacheChanged = true;

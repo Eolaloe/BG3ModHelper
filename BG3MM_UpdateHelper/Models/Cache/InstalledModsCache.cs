@@ -20,7 +20,7 @@ public class InstalledModCacheEntry
     /// Snapshot of File.GetLastWriteTimeUtc() when the entry was cached.
     /// If the actual file timestamp differs, this entry is stale and must be re-parsed.
     /// </summary>
-    public DateTime PakFileModified { get; set; }
+    public DateTime PakFileLastWriteTime { get; set; }
 
     /// <summary>Parsed mod data.</summary>
     public InstalledMod ModData { get; set; } = new();
