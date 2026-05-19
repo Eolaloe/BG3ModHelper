@@ -9,7 +9,7 @@
         Topmost="True"
         ShowInTaskbar="True"
         AllowDrop="True"
-        SizeToContent="Manual"
+        SizeToContent="WidthAndHeight"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         Deactivated="Window_Deactivated"
         Drop="Window_Drop"
@@ -19,6 +19,43 @@
 
     <Window.Resources>
         <views:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <views:OpacityToBackgroundConverter x:Key="OpacityToBackgroundConverter"/>
+        <Style x:Key="CompactSlider" TargetType="Slider">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="16" VerticalAlignment="Center">
+                            <!-- Track -->
+                            <Rectangle Height="2" VerticalAlignment="Center"
+                                       Fill="#555555" RadiusX="1" RadiusY="1"/>
+                            <!-- PART_Track (required by Slider) -->
+                            <Track x:Name="PART_Track">
+                                <Track.Thumb>
+                                    <Thumb Width="12" Height="12">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse x:Name="circle"
+                                                         Width="12" Height="12"
+                                                         Fill="#CCCCCC"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="circle" Property="Fill" Value="White"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="circle" Property="Fill" Value="White"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="CompactButton" TargetType="Button">
             <Setter Property="Background"      Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -51,8 +88,7 @@
 
     <!-- Outer border: rounded + drop shadow -->
     <Border CornerRadius="16"
-            Background="#FF2D2D30"
-            Opacity="{Binding CompactOpacity}"
+            Background="{Binding CompactOpacity, Converter={StaticResource OpacityToBackgroundConverter}}"
             Width="{Binding CompactSize}"
             Height="{Binding CompactSize}">
         <Border.ContextMenu>
@@ -71,68 +107,100 @@
             <DropShadowEffect BlurRadius="14" Opacity="0.45" ShadowDepth="4" Direction="270"/>
         </Border.Effect>
 
-        <Border CornerRadius="16" ClipToBounds="True">
-            <Grid>
-                <!-- 2×2 icon button grid -->
-                <UniformGrid Rows="2" Columns="2" Margin="16">
-                    <Button Style="{StaticResource CompactButton}"
-                            Content="&#xE72C;"
-                            Command="{Binding CheckUpdatesCommand}"
-                            ToolTip="Check for Updates"
-                            MaxWidth="52" MaxHeight="52" Margin="6"/>
+        <Grid>
+            <Border CornerRadius="16" ClipToBounds="True">
+                <Grid>
+                    <!-- 2×2 icon button grid -->
+                    <UniformGrid Rows="2" Columns="2" Margin="16">
+                        <Button Style="{StaticResource CompactButton}"
+                                Content="&#xE72C;"
+                                Command="{Binding CheckUpdatesCommand}"
+                                ToolTip="Check for Updates"
+                                MaxWidth="52" MaxHeight="52" Margin="6"/>
 
-                    <Button Style="{StaticResource CompactButton}"
-                            Content="&#xE700;"
-                            Command="{Binding LaunchBG3MMCommand}"
-                            ToolTip="Launch BG3MM"
-                            MaxWidth="52" MaxHeight="52" Margin="6"/>
+                        <Button Style="{StaticResource CompactButton}"
+                                Content="&#xE700;"
+                                Command="{Binding LaunchBG3MMCommand}"
+                                ToolTip="Launch BG3MM"
+                                MaxWidth="52" MaxHeight="52" Margin="6"/>
 
-                    <Button Style="{StaticResource CompactButton}"
-                            Content="&#xE713;"
-                            Command="{Binding OpenSettingsCommand}"
-                            ToolTip="Settings"
-                            MaxWidth="52" MaxHeight="52" Margin="6"/>
+                        <Button Style="{StaticResource CompactButton}"
+                                Content="&#xE713;"
+                                Command="{Binding OpenSettingsCommand}"
+                                ToolTip="Settings"
+                                MaxWidth="52" MaxHeight="52" Margin="6"/>
 
-                    <Button Style="{StaticResource CompactButton}"
-                            Content="&#xE923;"
-                            Command="{Binding ExitCompactCommand}"
-                            ToolTip="Exit Compact Mode"
-                            MaxWidth="52" MaxHeight="52" Margin="6"/>
-                </UniformGrid>
+                        <Button Style="{StaticResource CompactButton}"
+                                Content="&#xE923;"
+                                Command="{Binding ExitCompactCommand}"
+                                ToolTip="Exit Compact Mode"
+                                MaxWidth="52" MaxHeight="52" Margin="6"/>
+                    </UniformGrid>
 
-                <!-- Scanning indicator -->
-                <Border VerticalAlignment="Bottom"
-                        HorizontalAlignment="Center"
-                        Margin="0,0,0,8"
-                        Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="●"
-                               FontSize="8"
-                               Foreground="#0078d4">
-                        <TextBlock.Triggers>
-                            <EventTrigger RoutedEvent="Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                         From="1" To="0.2" Duration="0:0:0.8"
-                                                         AutoReverse="True"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </TextBlock.Triggers>
-                    </TextBlock>
-                </Border>
+                    <!-- Close button — top-right corner -->
+                    <Button HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="0,6,6,0"
+                            Width="20" Height="20"
+                            FontSize="12"
+                            Content="&#xE8BB;"
+                            Foreground="#888888"
+                            Command="{Binding ExitAppCommand}"
+                            ToolTip="Exit"
+                            Style="{StaticResource CompactButton}"/>
 
-                <!-- Drag overlay -->
-                <Grid x:Name="DragOverlay" Visibility="Collapsed" IsHitTestVisible="False">
-                    <Rectangle Fill="#CC1a1a2e"/>
-                    <Border BorderBrush="#4da6ff" BorderThickness="2" Margin="3">
-                        <TextBlock Text="&#x2B07;"
-                                   FontSize="48" Foreground="White"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Border>
+                    <!-- Opacity slider — overlaps bottom of button grid -->
+                    <Grid VerticalAlignment="Bottom" Margin="14,0,14,10" Panel.ZIndex="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE706;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                   Foreground="#666666" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <Slider Grid.Column="1"
+                                Value="{Binding CompactOpacity, Mode=TwoWay}"
+                                Minimum="0.1" Maximum="1.0" SmallChange="0.05"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource CompactSlider}"/>
+                        <TextBlock Grid.Column="2" Text="&#xE706;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                   Foreground="#AAAAAA" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                    </Grid>
+
+                    <!-- Drag overlay -->
+                    <Grid x:Name="DragOverlay" Visibility="Collapsed" IsHitTestVisible="False">
+                        <Rectangle Fill="#CC1a1a2e"/>
+                        <Border BorderBrush="#4da6ff" BorderThickness="2" Margin="3">
+                            <TextBlock Text="&#x2B07;"
+                                       FontSize="48" Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
+
+            <!-- Scanning indicator: arc sweeping around the border -->
+            <Rectangle RadiusX="16" RadiusY="16"
+                       Width="{Binding CompactSize}" Height="{Binding CompactSize}"
+                       Stroke="#0078d4" StrokeThickness="2"
+                       Fill="Transparent"
+                       StrokeDashArray="30 276"
+                       IsHitTestVisible="False"
+                       Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Rectangle.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever">
+                                <DoubleAnimation Storyboard.TargetProperty="StrokeDashOffset"
+                                                 From="0" To="-306" Duration="0:0:1.5"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Rectangle.Triggers>
+            </Rectangle>
+        </Grid>
     </Border>
 </Window>

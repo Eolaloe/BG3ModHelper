@@ -53,10 +53,14 @@ public static class Downloader
 
             // Step 3: Match pak to install — prefer same filename, else first
             var existingName = Path.GetFileName(existingPakPath);
-            var sourceFile   = pakFiles.FirstOrDefault(p =>
+            var matched      = pakFiles.FirstOrDefault(p =>
                                    string.Equals(Path.GetFileName(p), existingName,
-                                       StringComparison.OrdinalIgnoreCase))
-                               ?? pakFiles[0];
+                                       StringComparison.OrdinalIgnoreCase));
+            var sourceFile   = matched ?? pakFiles[0];
+            if (matched != null)
+                Logger.Debug($"Downloader: pak matched by name → {existingName}");
+            else
+                Logger.Debug($"Downloader: pak name mismatch, using first in archive → {Path.GetFileName(sourceFile)} (expected {existingName}, found [{string.Join(", ", pakFiles.Select(Path.GetFileName))}])");
 
             // Step 4: Backup existing pak (only if enabled in settings)
             if (backupEnabled && File.Exists(existingPakPath))
@@ -77,7 +81,7 @@ public static class Downloader
                 throw new PakInUseException(Path.GetFileName(destPath), ex);
             }
 
-            progress?.Report(new DownloadProgress("Done", 100));
+            progress?.Report(new DownloadProgress("Updated", 100));
             Logger.Info($"Downloader: installed {Path.GetFileName(destPath)}");
 
             // Record fileId for accurate update detection next time (spec §4.11)
@@ -139,7 +143,7 @@ public static class Downloader
                 throw new PakInUseException(Path.GetFileName(destPath), ex);
             }
 
-            progress?.Report(new DownloadProgress("Done", 100));
+            progress?.Report(new DownloadProgress("Updated", 100));
             Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} from local archive");
 
             InvalidateCache(destPath, destPath);
@@ -162,6 +166,7 @@ public static class Downloader
         response.EnsureSuccessStatusCode();
 
         var total    = response.Content.Headers.ContentLength ?? -1L;
+        Logger.Info($"Downloader: starting download — size={( total > 0 ? $"{total / (1024.0 * 1024.0):F1} MB" : "unknown")} url={url}");
         var received = 0L;
         var buffer   = new byte[81920]; // 80 KB chunks
 

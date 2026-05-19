@@ -1,0 +1,20 @@
+<Window x:Class="BG3MM_UpdateHelper.Views.NexusLoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Nexus Mods — Log In"
+        Width="600" Height="750"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="12,8">
+            <TextBlock Text="Log in to Nexus Mods. This window closes automatically when login is detected."
+                       FontSize="12" Foreground="#555555"/>
+        </Border>
+        <wv2:WebView2 Grid.Row="1" x:Name="NexusWebView"/>
+    </Grid>
+</Window>

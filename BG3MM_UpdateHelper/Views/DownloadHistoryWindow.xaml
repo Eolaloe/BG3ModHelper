@@ -21,22 +21,20 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <TextBlock x:Name="tb"
-                                   Text="{TemplateBinding Content}"
-                                   FontSize="13"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{TemplateBinding ToolTip}"/>
+                        <ContentPresenter x:Name="cp"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center"
+                                          ToolTip="{TemplateBinding ToolTip}"/>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="tb" Property="TextDecorations" Value="Underline"/>
-                                <Setter TargetName="tb" Property="Foreground" Value="#0078d4"/>
+                                <Setter TargetName="cp" Property="Opacity" Value="0.7"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="tb" Property="Foreground" Value="#333333"/>
-                                <Setter TargetName="tb" Property="Cursor" Value="Arrow"/>
+                                <Setter TargetName="cp" Property="Opacity" Value="0.5"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -65,13 +63,43 @@
 
                     <!-- 모드명 -->
                     <Button Grid.Column="1"
-                            Content="{Binding ModName}"
-                            ToolTip="{Binding ModName}"
                             Command="{Binding OpenPageCommand}"
                             IsEnabled="{Binding CanOpenPage}"
                             Style="{StaticResource ModNameButton}"
                             Margin="0,0,8,0"
-                            VerticalAlignment="Center"/>
+                            VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock x:Name="tbPlatform"
+                                       Text="{Binding PlatformModName}"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding LocalModName}"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="11"/>
+                                        <Setter Property="Foreground" Value="#888888"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                <Setter Property="FontSize" Value="13"/>
+                                                <Setter Property="Foreground" Value="#dddddd"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
 
                     <!-- 이전버전 -->
                     <TextBlock Grid.Column="2"

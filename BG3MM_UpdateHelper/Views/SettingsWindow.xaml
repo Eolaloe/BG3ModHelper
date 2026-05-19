@@ -26,7 +26,13 @@
 
                 <GroupBox Header="Paths" Margin="0,0,0,12">
                     <StackPanel Margin="8">
-                        <TextBlock Text="BG3MM Folder" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Image Source="pack://application:,,,/bg3mm.ico"
+                                   Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="BG3MM Folder" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -45,7 +51,13 @@
                             </Hyperlink>
                         </TextBlock>
 
-                        <TextBlock Text="Mods Folder" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Image Source="pack://application:,,,/bg3.png"
+                                   Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="Mods Folder" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -65,13 +77,24 @@
                 <GroupBox Header="API Keys" Margin="0,0,0,12">
                     <StackPanel Margin="8">
                         <!-- Nexus Mods + Free/Premium badge -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                            <TextBlock Text="Nexus Mods" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Border x:Name="NexusTierBadge" CornerRadius="3" Padding="6,2" Margin="6,0,0,0"
-                                    VerticalAlignment="Center" Visibility="Collapsed">
-                                <TextBlock x:Name="NexusTierText" Foreground="White" FontSize="10" FontWeight="SemiBold"/>
-                            </Border>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Image Source="pack://application:,,,/nexus.png"
+                                       Width="16" Height="16"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <TextBlock Text="Nexus Mods" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border x:Name="NexusTierBadge" CornerRadius="3" Padding="6,2" Margin="6,0,0,0"
+                                        VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBlock x:Name="NexusTierText" Foreground="White" FontSize="10" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+                            <Button x:Name="NexusLoginBtn" Content="Nexus Login"
+                                    Style="{StaticResource SettingsActionButton}"
+                                    HorizontalAlignment="Right"
+                                    Click="NexusLogin_Click"
+                                    ToolTip="Log in / out of Nexus Mods"/>
+                        </Grid>
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -94,8 +117,13 @@
                             <Button Grid.Column="2" Content="Get API Key" Margin="4,0,0,0" Style="{StaticResource SettingsActionButton}"
                                     Click="OpenNexusKeyPage_Click"/>
                         </Grid>
-
-                        <TextBlock Text="mod.io" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Image Source="pack://application:,,,/modio.png"
+                                   Width="16" Height="16"
+                                   VerticalAlignment="Center" Margin="0,0,5,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="mod.io" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>

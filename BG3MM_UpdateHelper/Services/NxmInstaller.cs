@@ -9,6 +9,16 @@ namespace BG3MM_UpdateHelper.Services;
 /// </summary>
 public static class NxmInstaller
 {
+    private static string? _lastDownloadError;
+
+    /// <summary>Returns and clears the last download-stage error message (if any).</summary>
+    public static string? ConsumeLastError()
+    {
+        var e = _lastDownloadError;
+        _lastDownloadError = null;
+        return e;
+    }
+
     /// <summary>
     /// Processes one queue item: token → download URL → download + install.
     /// Returns install result on success, null on failure.
@@ -17,6 +27,7 @@ public static class NxmInstaller
         NxmQueueItem item,
         IProgress<DownloadProgress>? progress = null)
     {
+        _lastDownloadError = null;
         var settings = SettingsStore.Load();
 
         var modsFolder = !string.IsNullOrEmpty(settings.ModsFolderPath)
@@ -37,10 +48,12 @@ public static class NxmInstaller
             item.Url.NexusModId,
             item.Url.NexusFileId,
             nxmKey:     item.Url.Key,
-            nxmExpires: item.Url.Expires);
+            nxmExpires: item.Url.Expires,
+            nxmUserId:  item.Url.UserId);
 
         if (string.IsNullOrEmpty(downloadUrl))
         {
+            _lastDownloadError = api.LastError;
             Logger.Warn($"NxmInstaller: failed to resolve download URL for {item.RawUrl}");
             return null;
         }

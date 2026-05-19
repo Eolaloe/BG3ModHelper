@@ -17,6 +17,7 @@ public class MainWindowViewModel : ViewModelBase
     private int _installedModsCount;
     private DateTime? _lastCheck = null;
     private bool _isScanning;
+    private Views.UpdateNotificationWindow? _updateWindow;
 
     // Progress state
     private string _statusText        = "";
@@ -36,7 +37,9 @@ public class MainWindowViewModel : ViewModelBase
         _settings    = SettingsStore.Load();
         _lastCheck   = _settings.LastCheck;
 
-        ChangeBG3MMFolderCommand = new RelayCommand(ChangeBG3MMFolder);
+        ChangeBG3MMFolderCommand  = new RelayCommand(ChangeBG3MMFolder);
+        OpenBG3MMFolderCommand    = new RelayCommand(OpenBG3MMFolder,  () => Directory.Exists(_settings.BG3MMFolderPath));
+        OpenModsFolderCommand     = new RelayCommand(OpenModsFolder,   () => Directory.Exists(ModsFolderActualPath));
         CheckUpdatesCommand      = new RelayCommand(StartCheckUpdates, () => !_isScanning);
         LaunchBG3MMCommand       = new RelayCommand(LaunchBG3MM, CanLaunchBG3MM);
         OpenSettingsCommand      = new RelayCommand(OpenSettings, () => !_isScanning);
@@ -74,14 +77,16 @@ public class MainWindowViewModel : ViewModelBase
     public string BG3MMFolderPath =>
         string.IsNullOrEmpty(_settings.BG3MMFolderPath) ? "(not set)" : _settings.BG3MMFolderPath;
 
+    public string ModsFolderActualPath =>
+        !string.IsNullOrEmpty(_settings.ModsFolderPath)
+            ? _settings.ModsFolderPath
+            : PathDiscovery.GetDefaultModsFolder();
+
     public string ModsFolderDisplay
     {
         get
         {
-            var path = !string.IsNullOrEmpty(_settings.ModsFolderPath)
-                ? _settings.ModsFolderPath
-                : PathDiscovery.GetDefaultModsFolder();
-
+            var path = ModsFolderActualPath;
             return PathDiscovery.ModsFolderExists(path)
                 ? path + " (auto-detected)"
                 : path + " (folder not found -- please run BG3 at least once)";
@@ -102,6 +107,8 @@ public class MainWindowViewModel : ViewModelBase
         private set
         {
             SetField(ref _isScanning, value);
+            CheckUpdatesCommand.RaiseCanExecuteChanged();
+            OpenSettingsCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -134,6 +141,8 @@ public class MainWindowViewModel : ViewModelBase
     // === Commands ===
 
     public RelayCommand ChangeBG3MMFolderCommand { get; }
+    public RelayCommand OpenBG3MMFolderCommand   { get; }
+    public RelayCommand OpenModsFolderCommand    { get; }
     public RelayCommand CheckUpdatesCommand      { get; }
     public RelayCommand LaunchBG3MMCommand       { get; }
     public RelayCommand OpenSettingsCommand      { get; }
@@ -144,9 +153,31 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand ExitAppCommand           { get; }
 
     public int    CompactSize    => _settings.CompactSize;
-    public double CompactOpacity => _settings.CompactOpacity;
+    public double CompactOpacity
+    {
+        get => _settings.CompactOpacity;
+        set
+        {
+            _settings.CompactOpacity = value;
+            OnPropertyChanged();
+            SettingsStore.Save(_settings);
+        }
+    }
 
     // === Command implementations ===
+
+    private void OpenBG3MMFolder()
+    {
+        if (Directory.Exists(_settings.BG3MMFolderPath))
+            Process.Start(new ProcessStartInfo(_settings.BG3MMFolderPath) { UseShellExecute = true });
+    }
+
+    private void OpenModsFolder()
+    {
+        var path = ModsFolderActualPath;
+        if (Directory.Exists(path))
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
 
     private void ChangeBG3MMFolder()
     {
@@ -183,6 +214,12 @@ public class MainWindowViewModel : ViewModelBase
     private async Task CheckUpdatesAsync()
     {
         if (_isScanning) return;
+
+        if (_updateWindow?.IsVisible == true)
+        {
+            _updateWindow.Activate();
+            return;
+        }
 
         // Check nxm handler status before proceeding
         CheckNxmHandler();
@@ -234,7 +271,9 @@ public class MainWindowViewModel : ViewModelBase
                 }
             }
 
-            StatusText = "Checking for updates...";
+            StatusText              = "Checking for updates...";
+            ProgressIsIndeterminate = false;
+            ProgressMax             = _installedMods.Count;
 
             var nexusApi = hasNexus ? new NexusApi(_settings.NexusAPIKey) : null;
             var modioApi = hasModio ? new ModioApi(_settings.ModioAPIKey) : null;
@@ -319,10 +358,12 @@ public class MainWindowViewModel : ViewModelBase
                 // TODO Phase 8: save NexusIdDatabase + Vercel contribution
             };
 
-            var window = new Views.UpdateNotificationWindow(notificationVm)
+            var window = new Views.UpdateNotificationWindow(notificationVm, _settings)
             {
                 Owner = _ownerWindow
             };
+            _updateWindow = window;
+            window.Closed += (_, _) => _updateWindow = null;
             window.Show();
         }
         catch (Exception ex)
@@ -592,6 +633,31 @@ public class MainWindowViewModel : ViewModelBase
                           StringComparison.OrdinalIgnoreCase));
         var fromVersion = existing?.MetaVersion ?? "Not installed";
 
+        // Resolve platform mod name and page URL
+        // Nexus/Both-as-Nexus: name + URL already in info from local DB
+        // ModIO (user explicitly chose mod.io): one API call to get name + profile URL
+        var platformModName = info.PlatformModName;
+        var pageUrl         = info.NexusPageUrl;
+        if (finalSource == "ModIO" &&
+            info.PublishHandle != 0 &&
+            !string.IsNullOrEmpty(_settings.ModioAPIKey))
+        {
+            try
+            {
+                var modioApi  = new ModioApi(_settings.ModioAPIKey);
+                var modioData = await modioApi.GetModInfoAsync(info.PublishHandle);
+                if (modioData != null)
+                {
+                    platformModName = modioData.ModioModName;
+                    pageUrl         = modioData.ModioProfileUrl;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"mod.io lookup failed for handle {info.PublishHandle}: {ex.Message}");
+            }
+        }
+
         IsScanning  = true;
         StatusText  = $"Installing {info.ModName}...";
         try
@@ -615,13 +681,14 @@ public class MainWindowViewModel : ViewModelBase
 
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                HistoryDownloadedAt = DateTime.UtcNow,
-                HistoryModName      = info.ModName,
-                HistoryFromVersion  = fromVersion,
-                HistoryToVersion    = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
-                HistorySource       = finalSource,
-                HistoryPageUrl      = info.NexusPageUrl,
-                HistorySuccess      = true,
+                HistoryDownloadedAt    = DateTime.UtcNow,
+                HistoryModName         = info.ModName,
+                HistoryPlatformModName = platformModName,
+                HistoryFromVersion     = fromVersion,
+                HistoryToVersion       = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
+                HistorySource          = finalSource,
+                HistoryPageUrl         = pageUrl,
+                HistorySuccess         = true,
             });
 
             AddActivity($"Installed: {info.ModName}");
@@ -650,12 +717,14 @@ public class MainWindowViewModel : ViewModelBase
         {
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                HistoryDownloadedAt = DateTime.UtcNow,
-                HistoryModName      = info.ModName,
-                HistoryFromVersion  = fromVersion,
-                HistoryToVersion    = "—",
-                HistorySource       = finalSource,
-                HistorySuccess      = false,
+                HistoryDownloadedAt    = DateTime.UtcNow,
+                HistoryModName         = info.ModName,
+                HistoryPlatformModName = platformModName,
+                HistoryFromVersion     = fromVersion,
+                HistoryToVersion       = "—",
+                HistorySource          = finalSource,
+                HistoryPageUrl         = pageUrl,
+                HistorySuccess         = false,
             });
             MessageBox.Show($"Installation failed:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
@@ -819,9 +888,16 @@ public class MainWindowViewModel : ViewModelBase
                 StatusText    = prefix + p.Text;
                 ProgressValue = p.Percent;
             });
+            NxmDownloadQueue.Instance.ReportProgress(item, p);
         });
 
-        var result = await NxmInstaller.HandleAsync(item, progress);
+        var result      = await NxmInstaller.HandleAsync(item, progress);
+        var errorReason = result is null ? NxmInstaller.ConsumeLastError() : null;
+
+        // NxmInstaller가 별도 인스턴스로 fileIdStore를 저장했으므로 디스크에서 다시 로드
+        if (result is not null) _fileIdStore.Load();
+
+        NxmDownloadQueue.Instance.NotifyCompleted(item, result is not null, errorReason);
 
         if (result is not null)
         {
@@ -833,15 +909,30 @@ public class MainWindowViewModel : ViewModelBase
 
             AddActivity($"Installed from Nexus: {result.UpdateModName}");
 
+            var pageUrl        = $"https://www.nexusmods.com/baldursgate3/mods/{result.NexusModId}";
+            var nxmFromVersion =
+                _historyStore.GetAll()
+                    .Where(h => h.HistorySuccess && h.HistoryPageUrl == pageUrl)
+                    .OrderByDescending(h => h.HistoryDownloadedAt)
+                    .FirstOrDefault()?.HistoryToVersion
+                ?? _installedMods
+                    .FirstOrDefault(m => m.NexusModId.HasValue && m.NexusModId.Value == item.Url.NexusModId)
+                    ?.MetaVersion
+                ?? "";
+            var nxmPlatformName = _nexusIdDb
+                .LookupSingle(Path.GetFileNameWithoutExtension(result.PakFileName))
+                ?.NexusModName ?? "";
+
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                HistoryDownloadedAt = DateTime.UtcNow,
-                HistoryModName      = result.UpdateModName,
-                HistoryFromVersion  = "",
-                HistoryToVersion    = result.UpdateNewVersion,
-                HistorySource       = "Nexus",
-                HistoryPageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{result.NexusModId}",
-                HistorySuccess      = true,
+                HistoryDownloadedAt    = DateTime.UtcNow,
+                HistoryModName         = result.UpdateModName,
+                HistoryPlatformModName = nxmPlatformName,
+                HistoryFromVersion     = string.IsNullOrEmpty(nxmFromVersion) ? "Not installed" : nxmFromVersion,
+                HistoryToVersion       = result.UpdateNewVersion,
+                HistorySource          = "Nexus",
+                HistoryPageUrl         = pageUrl,
+                HistorySuccess         = true,
             });
 
             _ = RefreshModsAsync();
@@ -856,15 +947,32 @@ public class MainWindowViewModel : ViewModelBase
 
             AddActivity($"Download failed: mod={item.Url.NexusModId}");
 
+            var failPageUrl    = $"https://www.nexusmods.com/baldursgate3/mods/{item.Url.NexusModId}";
+            var nxmFromVersionFail =
+                _historyStore.GetAll()
+                    .Where(h => h.HistorySuccess && h.HistoryPageUrl == failPageUrl)
+                    .OrderByDescending(h => h.HistoryDownloadedAt)
+                    .FirstOrDefault()?.HistoryToVersion
+                ?? _installedMods
+                    .FirstOrDefault(m => m.NexusModId.HasValue && m.NexusModId.Value == item.Url.NexusModId)
+                    ?.MetaVersion
+                ?? "";
+            var failMod          = _installedMods.FirstOrDefault(m => m.NexusModId.HasValue && m.NexusModId.Value == item.Url.NexusModId);
+            var failPakBase      = failMod != null ? Path.GetFileNameWithoutExtension(failMod.PakFilePath ?? "") : "";
+            var failDbEntry      = !string.IsNullOrEmpty(failPakBase) ? _nexusIdDb.LookupSingle(failPakBase) : null;
+            var failPlatformName = failDbEntry?.NexusModName ?? "";
+            var failModName      = failMod?.MetaModuleName ?? failDbEntry?.NexusModName ?? $"Mod {item.Url.NexusModId}";
+
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                HistoryDownloadedAt = DateTime.UtcNow,
-                HistoryModName      = $"Mod {item.Url.NexusModId}",
-                HistoryFromVersion  = "",
-                HistoryToVersion    = "",
-                HistorySource       = "Nexus",
-                HistoryPageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{item.Url.NexusModId}",
-                HistorySuccess      = false,
+                HistoryDownloadedAt    = DateTime.UtcNow,
+                HistoryModName         = failModName,
+                HistoryPlatformModName = failPlatformName,
+                HistoryFromVersion     = string.IsNullOrEmpty(nxmFromVersionFail) ? "Not installed" : nxmFromVersionFail,
+                HistoryToVersion       = "",
+                HistorySource          = "Nexus",
+                HistoryPageUrl         = failPageUrl,
+                HistorySuccess         = false,
             });
         }
     }

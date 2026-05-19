@@ -5,7 +5,9 @@ public class ModUpdateEntry
     public string MetaUuid            { get; set; } = "";
     public ulong  ModioPublishHandle  { get; set; }
     public int?   NexusModId          { get; set; }
-    public string UpdateModName       { get; set; } = "";
+    public string UpdateModName       { get; set; } = "";  // MetaModuleName (local pak)
+    public string NexusModName        { get; set; } = "";  // from Nexus DB
+    public string ModioModName        { get; set; } = "";  // from mod.io API
     public string UpdateCurrentVersion { get; set; } = "";
     public string UpdateNewVersion    { get; set; } = "";  // higher of the two (display fallback)
 

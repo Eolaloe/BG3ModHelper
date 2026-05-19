@@ -60,6 +60,8 @@ public static class UpdateChecker
                     entry.ModioProfileUrl   = modioData.ModioProfileUrl;
                     entry.AvailableSources.Add(UpdateSource.MODIO);
                     entry.Changelog         = "";
+                    if (!string.IsNullOrEmpty(modioData.ModioModName))
+                        entry.ModioModName = modioData.ModioModName;
                 }
             }
 
@@ -84,6 +86,11 @@ public static class UpdateChecker
                         string.Equals(e.MetaUuid, mod.MetaUuid,
                             StringComparison.OrdinalIgnoreCase));
 
+                if (dbEntries.Count == 0)
+                    Logger.Debug($"Nexus [{mod.MetaModuleName}] no DB match for pak={Path.GetFileName(mod.PakFilePath)}");
+                else if (dbEntry == null)
+                    Logger.Debug($"Nexus [{mod.MetaModuleName}] ambiguous DB match ({dbEntries.Count} results, uuid mismatch) — skipped");
+
                 if (dbEntry != null)
                 {
                     if (!mod.NexusModId.HasValue)
@@ -101,6 +108,8 @@ public static class UpdateChecker
 
                         entry.NexusModPageUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.NexusModId}";
                         entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                        if (!string.IsNullOrEmpty(dbEntry.NexusModName))
+                            entry.NexusModName = dbEntry.NexusModName;
                     }
 
                     if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
@@ -144,9 +153,15 @@ public static class UpdateChecker
     {
         var localFileId = store?.GetFileId(mod.MetaUuid);
         if (localFileId.HasValue)
-            return localFileId.Value != dbEntry.NexusFileId;
+        {
+            var result = localFileId.Value != dbEntry.NexusFileId;
+            Logger.Debug($"Nexus [{mod.MetaModuleName}] fileId check: local={localFileId.Value} db={dbEntry.NexusFileId} → {(result ? "UPDATE" : "up-to-date")}");
+            return result;
+        }
 
-        return IsNewer(dbEntry.NexusFileVersion, mod.MetaVersion);
+        var verResult = IsNewer(dbEntry.NexusFileVersion, mod.MetaVersion);
+        Logger.Debug($"Nexus [{mod.MetaModuleName}] version fallback: local={mod.MetaVersion} db={dbEntry.NexusFileVersion} → {(verResult ? "UPDATE" : "up-to-date")}");
+        return verResult;
     }
 
     // === mod.io cache refresh ===

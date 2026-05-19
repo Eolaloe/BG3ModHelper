@@ -11,7 +11,8 @@ public sealed record NxmUrl(
     int    NexusModId,
     long   NexusFileId,
     string Key,
-    long   Expires)
+    long   Expires,
+    int?   UserId = null)
 {
     /// <summary>
     /// Parses a raw nxm URL string. Throws on invalid format or scheme.
@@ -39,13 +40,15 @@ public sealed record NxmUrl(
         var q       = HttpUtility.ParseQueryString(u.Query);
         var key     = q["key"] ?? "";
         var expires = long.TryParse(q["expires"], out var e) ? e : 0;
+        var userId  = int.TryParse(q["user_id"], out var uid) ? (int?)uid : null;
 
         return new NxmUrl(
             Game:        u.Host,
             NexusModId:  modId,
             NexusFileId: fileId,
             Key:         key,
-            Expires:     expires
+            Expires:     expires,
+            UserId:      userId
         );
     }
 

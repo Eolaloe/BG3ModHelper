@@ -66,6 +66,23 @@ public sealed class NxmDownloadQueue
     /// </summary>
     public event Action<NxmUrl, int>? OnQueued;
 
+    /// <summary>Fired during download to report progress. Args: (item, progress).</summary>
+    public event Action<NxmQueueItem, DownloadProgress>? OnProgress;
+
+    /// <summary>Called by the handler to report download progress.</summary>
+    public void ReportProgress(NxmQueueItem item, DownloadProgress p) =>
+        OnProgress?.Invoke(item, p);
+
+    /// <summary>
+    /// Fired when an item finishes processing (success or failure).
+    /// Args: (item, success, errorReason). errorReason is non-null only on failure.
+    /// </summary>
+    public event Action<NxmQueueItem, bool, string?>? OnCompleted;
+
+    /// <summary>Called by the handler after processing to notify subscribers of the result.</summary>
+    public void NotifyCompleted(NxmQueueItem item, bool success, string? errorReason = null) =>
+        OnCompleted?.Invoke(item, success, errorReason);
+
     /// <summary>
     /// Worker loop — drains the queue serially. Multiple Enqueue calls
     /// converge here but only one loop runs at a time (semaphore).

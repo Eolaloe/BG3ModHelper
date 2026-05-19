@@ -39,6 +39,11 @@ public class AppSettings
     /// <summary>Whether the app was last closed in Compact mode.</summary>
     public bool LastModeIsCompact { get; set; } = false;
 
+    // === WebView ===
+
+    /// <summary>Zoom factor for the slide WebView panel. 1.0 = 100%.</summary>
+    public double WebViewZoom { get; set; } = 1.0;
+
     // === nxm:// Protocol Handler ===
 
     /// <summary>Whether the app is currently registered as the nxm:// handler.</summary>

@@ -40,6 +40,15 @@ public partial class App : Application
             Formatting = Formatting.Indented
         };
 
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            Logger.Error($"Unhandled UI exception: {ex.Exception}");
+            ex.Handled = true;
+            System.Windows.MessageBox.Show(
+                $"Unexpected error:\n{ex.Exception.Message}",
+                "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        };
+
         Logger.Info("===== Application started =====");
 
         // === Start IPC server (background) ===
@@ -57,6 +66,7 @@ public partial class App : Application
 
         var mainWindow = new MainWindow();
         mainWindow.Show();
+        mainWindow.Activate();
 
         // First run: open Settings immediately
         if (!SettingsStore.Exists() || string.IsNullOrEmpty(settings.BG3MMFolderPath))

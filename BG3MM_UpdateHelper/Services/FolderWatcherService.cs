@@ -37,7 +37,10 @@ public sealed record ArchiveSourceInfo(
     string  ArchivePath,
 
     /// <summary>Mod version decoded from meta.lsx Version64. Empty if not available.</summary>
-    string  ModVersion
+    string  ModVersion,
+
+    /// <summary>Platform mod name from Nexus DB lookup. Empty for mod.io (fetched later via API).</summary>
+    string  PlatformModName
 );
 
 // === Service ===
@@ -434,16 +437,17 @@ public sealed class FolderWatcherService : IDisposable
             : null;
 
         return new ArchiveSourceInfo(
-            Source:        source,
-            Confidence:    confidence,
-            ZipHintSource: zipHint,
-            ModName:       modName,
-            PakFileName:   pakFileName,
-            NexusModId:    nexusModId,
-            NexusPageUrl:  nexusPageUrl,
-            PublishHandle: handle,
-            ArchivePath:   archivePath,
-            ModVersion:    mod?.MetaVersion ?? "");
+            Source:          source,
+            Confidence:      confidence,
+            ZipHintSource:   zipHint,
+            ModName:         modName,
+            PakFileName:     pakFileName,
+            NexusModId:      nexusModId,
+            NexusPageUrl:    nexusPageUrl,
+            PublishHandle:   handle,
+            ArchivePath:     archivePath,
+            ModVersion:      mod?.MetaVersion ?? "",
+            PlatformModName: nexusEntry?.NexusModName ?? "");
     }
 
     /// <summary>

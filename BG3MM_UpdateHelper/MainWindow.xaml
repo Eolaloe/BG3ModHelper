@@ -1,6 +1,7 @@
 <Window x:Class="BG3MM_UpdateHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:BG3MM_UpdateHelper.Views"
         Title="BG3MM_UpdateHelper"
         Height="500" Width="500"
         WindowStartupLocation="CenterScreen"
@@ -12,6 +13,34 @@
         MouseDown="Window_MouseDown">
 
     <Window.Resources>
+        <views:PathEllipsisConverter x:Key="PathEllipsisConverter"/>
+
+        <Style x:Key="FolderLinkButton" TargetType="Button">
+            <Setter Property="Background"             Value="Transparent"/>
+            <Setter Property="BorderThickness"        Value="0"/>
+            <Setter Property="Padding"                Value="0"/>
+            <Setter Property="Cursor"                 Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock x:Name="tb"
+                                   Text="{TemplateBinding Content}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{TemplateBinding ToolTip}"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tb" Property="TextDecorations" Value="Underline"/>
+                                <Setter TargetName="tb" Property="Foreground"      Value="#0078d4"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="tb" Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="PrimaryActionButton" TargetType="Button">
             <Setter Property="Background" Value="#0078d4"/>
             <Setter Property="Foreground" Value="White"/>
@@ -52,45 +81,53 @@
 
             <!-- Info panel -->
             <StackPanel Grid.Row="0" Margin="0,0,0,16">
-                <Grid Margin="0,4">
+                <Grid Margin="0,4" MinHeight="26">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="BG3MM folder:" FontWeight="SemiBold" Foreground="#666666"/>
-                    <TextBlock Grid.Column="1" Text="{Binding BG3MMFolderPath}"
-                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                    <Button Grid.Column="2" Content="Change..." Padding="8,2"
+                    <TextBlock Grid.Column="0" Text="BG3MM folder:" FontWeight="SemiBold" Foreground="#666666" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1"
+                            Content="{Binding BG3MMFolderPath}"
+                            ToolTip="{Binding BG3MMFolderPath}"
+                            Command="{Binding OpenBG3MMFolderCommand}"
+                            Style="{StaticResource FolderLinkButton}"
+                            VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Content="Change..." Width="80" Padding="0,4"
                             Command="{Binding ChangeBG3MMFolderCommand}"/>
                 </Grid>
 
-                <Grid Margin="0,4">
+                <Grid Margin="0,4" MinHeight="26">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Mods folder:" FontWeight="SemiBold" Foreground="#666666"/>
-                    <TextBlock Grid.Column="1" Text="{Binding ModsFolderDisplay}"
-                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="0" Text="Mods folder:" FontWeight="SemiBold" Foreground="#666666" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1"
+                            Content="{Binding ModsFolderDisplay, Converter={StaticResource PathEllipsisConverter}}"
+                            ToolTip="{Binding ModsFolderDisplay}"
+                            Command="{Binding OpenModsFolderCommand}"
+                            Style="{StaticResource FolderLinkButton}"
+                            VerticalAlignment="Center"/>
                 </Grid>
 
-                <Grid Margin="0,4">
+                <Grid Margin="0,4" MinHeight="26">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Installed mods:" FontWeight="SemiBold" Foreground="#666666"/>
+                    <TextBlock Grid.Column="0" Text="Installed mods:" FontWeight="SemiBold" Foreground="#666666" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="{Binding InstalledModsCountDisplay}"
                                VerticalAlignment="Center"/>
                 </Grid>
 
-                <Grid Margin="0,4">
+                <Grid Margin="0,4" MinHeight="26">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold" Foreground="#666666"/>
+                    <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold" Foreground="#666666" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="{Binding LastCheckDisplay}"
                                VerticalAlignment="Center"/>
                 </Grid>

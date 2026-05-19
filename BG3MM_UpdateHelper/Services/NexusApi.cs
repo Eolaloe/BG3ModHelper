@@ -29,6 +29,9 @@ public class NexusApi(string apiKey)
     public int HourlyRemaining { get; private set; } = 100;
     public int DailyRemaining  { get; private set; } = 2500;
 
+    /// <summary>Last error message from the API response body, if any.</summary>
+    public string? LastError { get; private set; }
+
     /// <summary>
     /// Returns a new instance with the same API key. Rate limit counters reset to defaults.
     /// Calling just before download avoids inheriting rate limit state from CheckUpdates.
@@ -165,11 +168,15 @@ public class NexusApi(string apiKey)
     /// </summary>
     public async Task<string?> GetDownloadUrlAsync(
         int modId, long fileId,
-        string? nxmKey = null, long? nxmExpires = null)
+        string? nxmKey = null, long? nxmExpires = null, int? nxmUserId = null)
     {
         var path = $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files/{fileId}/download_link.json";
         if (!string.IsNullOrEmpty(nxmKey) && nxmExpires.HasValue)
+        {
             path += $"?key={nxmKey}&expires={nxmExpires.Value}";
+            if (nxmUserId.HasValue)
+                path += $"&user_id={nxmUserId.Value}";
+        }
 
         var json = await GetAsync(path);
         if (json == null) return null;
@@ -268,7 +275,11 @@ public class NexusApi(string apiKey)
 
             if (!response.IsSuccessStatusCode)
             {
-                Logger.Warn($"NexusApi: HTTP {(int)response.StatusCode} — {path}");
+                var body = "";
+                try { body = await response.Content.ReadAsStringAsync(); } catch { }
+                LastError = TryExtractErrorMessage(body) ?? $"HTTP {(int)response.StatusCode}";
+                Logger.Warn($"NexusApi: HTTP {(int)response.StatusCode} — {path}" +
+                            (string.IsNullOrEmpty(body) ? "" : $"\n  Body: {body}"));
                 return null;
             }
 
@@ -279,6 +290,13 @@ public class NexusApi(string apiKey)
             Logger.Error($"NexusApi: request failed — {path} — {ex.Message}");
             return null;
         }
+    }
+
+    private static string? TryExtractErrorMessage(string body)
+    {
+        if (string.IsNullOrEmpty(body)) return null;
+        try { return JObject.Parse(body)["message"]?.Value<string>(); }
+        catch { return null; }
     }
 
     private void UpdateRateLimits(HttpResponseMessage response)

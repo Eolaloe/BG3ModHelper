@@ -39,7 +39,10 @@ public class DownloadHistoryEntryViewModel
     public string DateDisplay =>
         _entry.HistoryDownloadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
-    public string ModName => _entry.HistoryModName;
+    public string ModName         => _entry.HistoryModName;
+    public string PlatformModName => _entry.HistoryPlatformModName;
+    public string LocalModName    => _entry.HistoryModName;
+    public bool   HasPlatformName => !string.IsNullOrEmpty(_entry.HistoryPlatformModName);
 
     public string FromVersion => _entry.HistoryFromVersion;
     public string ToVersion   => _entry.HistoryToVersion;

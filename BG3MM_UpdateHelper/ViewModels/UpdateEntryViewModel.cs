@@ -43,7 +43,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         _historyStore   = historyStore;
         _activeSource   = entry.DefaultSource;
         _status         = UpdateStatus.Pending;
-        _isSelected     = entry.CanAutoDownload;
+        _isSelected     = entry.CanAutoDownload ||
+                          (entry.AvailableSources.Contains(UpdateSource.NEXUSMODS) &&
+                           entry.NexusModId != null);
 
         PrimaryActionCommand = new RelayCommand(ExecutePrimaryAction, CanExecutePrimaryAction);
         SwitchSourceCommand  = new RelayCommand<string>(SwitchSource);
@@ -54,7 +56,24 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
     // === Identity ===
     public string UUID           => _entry.MetaUuid;
+    public int?   NexusModId     => _entry.NexusModId;
     public string ModName        => _entry.UpdateModName;
+
+    // Two-line name display: platform name (top) + MetaModuleName (bottom)
+    public string PlatformModName =>
+        ActiveSource == UpdateSource.MODIO ? _entry.ModioModName : _entry.NexusModName;
+
+    public string LocalModName => _entry.UpdateModName;
+
+    public bool HasPlatformName => !string.IsNullOrEmpty(PlatformModName);
+
+    // Sort keys for ICollectionView SortDescriptions
+    public string SortName => !string.IsNullOrEmpty(PlatformModName) ? PlatformModName : LocalModName;
+    public int SortSourceOrder =>
+        IsNexusUnregistered                ? 3 :
+        ActiveSource == UpdateSource.MODIO ? 0 :
+        CanAutoDownload                    ? 1 : 2;
+
     public string CurrentVersion => _entry.UpdateCurrentVersion;
     public string NewVersion     => _entry.UpdateNewVersion;
 
@@ -87,10 +106,13 @@ public partial class UpdateEntryViewModel : ViewModelBase
             OnPropertyChanged(nameof(ActionLabel));
             OnPropertyChanged(nameof(ActionStyle));
             OnPropertyChanged(nameof(CanAutoDownload));
+            OnPropertyChanged(nameof(CanBeQueued));
             OnPropertyChanged(nameof(HasMultipleSources));
             OnPropertyChanged(nameof(ShowSwitchButtons));
             OnPropertyChanged(nameof(ActivePageUrl));
             OnPropertyChanged(nameof(NewVersionDisplay));  // update version label on source switch
+            OnPropertyChanged(nameof(PlatformModName));
+            OnPropertyChanged(nameof(HasPlatformName));
             PrimaryActionCommand.RaiseCanExecuteChanged();
         }
     }
@@ -117,6 +139,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         !IsNexusUnregistered &&
         (ActiveSource == UpdateSource.MODIO ||
          (ActiveSource == UpdateSource.NEXUSMODS && _nexusIsPremium));
+
+    // True for auto-download AND Nexus Free items (both can be queued via Download Selected)
+    public bool CanBeQueued => CanAutoDownload || (HasNexus && !IsNexusUnregistered);
 
     public string ActionLabel
     {
@@ -163,7 +188,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public string StatusText
     {
         get => _statusText;
-        private set => SetField(ref _statusText, value);
+        set => SetField(ref _statusText, value);
     }
 
     public string StatusColor => Status switch
@@ -203,6 +228,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public RelayCommand         RegisterNexusCommand  { get; }
 
     public event Action<UpdateEntryViewModel>?      DownloadRequested;
+    public event Action<UpdateEntryViewModel>?      PageOpenRequested;
     public event Action<UpdateEntryViewModel, int>? NexusRegistered;
 
     // === Download ===
@@ -337,7 +363,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
         if (!CanAutoDownload)
         {
-            OpenPage();
+            PageOpenRequested?.Invoke(this);
             return;
         }
 
@@ -405,8 +431,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
         _historyStore.Add(new DownloadHistoryEntry
         {
-            HistoryDownloadedAt = DateTime.UtcNow,
-            HistoryModName      = ModName,
+            HistoryDownloadedAt    = DateTime.UtcNow,
+            HistoryModName         = ModName,
+            HistoryPlatformModName = PlatformModName,
             HistoryFromVersion  = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
             HistoryToVersion    = NewVersionDisplay,
             HistorySource       = source,

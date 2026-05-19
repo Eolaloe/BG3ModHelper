@@ -9,8 +9,11 @@ public class DownloadHistoryEntry
     /// <summary>UTC timestamp of the download attempt.</summary>
     public DateTime HistoryDownloadedAt { get; set; }
 
-    /// <summary>Display name of the mod.</summary>
+    /// <summary>Display name of the mod (MetaModuleName from pak).</summary>
     public string   HistoryModName      { get; set; } = "";
+
+    /// <summary>Platform mod name at download time (NexusModName or ModioModName). Empty for older records.</summary>
+    public string   HistoryPlatformModName { get; set; } = "";
 
     /// <summary>Version before update. "Not installed" if newly installed.</summary>
     public string   HistoryFromVersion  { get; set; } = "";

@@ -1,6 +1,8 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using BG3MM_UpdateHelper.ViewModels;
 
 namespace BG3MM_UpdateHelper.Views;
@@ -17,6 +19,64 @@ public partial class CompactWindow : Window
         _vm         = vm;
         DataContext = vm;
     }
+
+    // === WM_MOVING boundary clamp ===
+
+    private const int  WM_EXITSIZEMOVE       = 0x0232;
+    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+    private const uint SWP_NOSIZE     = 0x0001;
+    private const uint SWP_NOZORDER   = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MONITORINFO
+    {
+        public int  cbSize;
+        public RECT rcMonitor;   // 모니터 전체 영역 (물리 픽셀)
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll")] static extern bool     GetWindowRect(IntPtr hwnd, out RECT rc);
+    [DllImport("user32.dll")] static extern IntPtr   MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
+    [DllImport("user32.dll")] static extern bool     SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != WM_EXITSIZEMOVE) return IntPtr.Zero;
+
+        // GetWindowRect + GetMonitorInfo 둘 다 물리 픽셀 — DPI 무관
+        GetWindowRect(hwnd, out var wrc);
+        int w = wrc.Right  - wrc.Left;
+        int h = wrc.Bottom - wrc.Top;
+
+        var hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        var mi   = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        GetMonitorInfo(hMon, ref mi);
+        var m = mi.rcWork;
+
+        int clampedLeft = Math.Clamp(wrc.Left, m.Left, m.Right  - w);
+        int clampedTop  = Math.Clamp(wrc.Top,  m.Top,  m.Bottom - h);
+
+        if (clampedLeft != wrc.Left || clampedTop != wrc.Top)
+            SetWindowPos(hwnd, IntPtr.Zero, clampedLeft, clampedTop, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+        return IntPtr.Zero;
+    }
+
+    // ===
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

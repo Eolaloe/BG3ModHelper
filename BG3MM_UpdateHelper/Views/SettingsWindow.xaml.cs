@@ -40,7 +40,12 @@ public partial class SettingsWindow : Window
         }
 
         LoadToUI();
+        WebViewHelper.LoginStateChanged += OnLoginStateChanged;
+        Closed += (_, _) => WebViewHelper.LoginStateChanged -= OnLoginStateChanged;
     }
+
+    private void OnLoginStateChanged(bool loggedIn) =>
+        Dispatcher.Invoke(() => NexusLoginBtn.Content = loggedIn ? "Nexus Logout" : "Nexus Login");
 
     private void LoadToUI()
     {
@@ -56,6 +61,7 @@ public partial class SettingsWindow : Window
         ApiKeyFolderText.Text        = System.IO.Path.Combine(SettingsStore.GetDataFolder(), "settings.json");
         ApiKeyFolderLink.NavigateUri = new Uri(System.IO.Path.Combine(SettingsStore.GetDataFolder(), "settings.json"));
 
+        NexusLoginBtn.Content     = WebViewHelper.IsLoggedIn() ? "Nexus Logout" : "Nexus Login";
         NexusTierBadge.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(_settings.NexusAPIKey))
         {
@@ -114,6 +120,19 @@ public partial class SettingsWindow : Window
 
     private void OpenNexusKeyPage_Click(object sender, RoutedEventArgs e) =>
         OpenUrl(Constants.NEXUS_API_KEY_HELP_URL);
+
+    private async void NexusLogin_Click(object sender, RoutedEventArgs e)
+    {
+        if (WebViewHelper.IsLoggedIn())
+        {
+            await WebViewHelper.LogoutAsync();
+        }
+        else
+        {
+            var win = new NexusLoginWindow { Owner = this };
+            win.ShowDialog();
+        }
+    }
 
     private void OpenModioKeyPage_Click(object sender, RoutedEventArgs e) =>
         OpenUrl(Constants.MODIO_API_KEY_HELP_URL);
