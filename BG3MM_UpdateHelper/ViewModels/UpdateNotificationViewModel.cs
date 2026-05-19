@@ -67,8 +67,8 @@ public class UpdateNotificationViewModel : ViewModelBase
         SkipCommand         = new RelayCommand(ExecuteSkip);
 
         // OnCompleted/OnProgress는 창이 열려있는 동안 항상 유지
-        NxmDownloadQueue.Instance.OnCompleted += OnNxmCompleted;
-        NxmDownloadQueue.Instance.OnProgress  += OnNxmProgress;
+        UnifiedDownloadQueue.Instance.OnNxmCompleted += OnNxmCompleted;
+        UnifiedDownloadQueue.Instance.OnNxmProgress  += OnNxmProgress;
 
         UpdateSummary();
     }
@@ -268,16 +268,34 @@ public class UpdateNotificationViewModel : ViewModelBase
 
             if (autoItems.Count == 0 && freeItems.Count == 0) return;
 
-            // Auto-download items (mod.io + Nexus Premium)
+            // Auto-download items (mod.io + Nexus Premium) — routed through UnifiedDownloadQueue
             if (autoItems.Count > 0)
             {
                 IsBusy = true;
-                int done = 0;
-                foreach (var entry in autoItems)
+                var total       = autoItems.Count;
+                var done        = 0;
+                var completions = autoItems.Select(_ => new TaskCompletionSource()).ToArray();
+
+                for (int i = 0; i < autoItems.Count; i++)
                 {
-                    BusyText = $"({++done}/{autoItems.Count}) {entry.ModName}";
-                    await entry.ExecuteDownloadAsync();
+                    var entry = autoItems[i];
+                    var tcs   = completions[i];
+                    Services.UnifiedDownloadQueue.Instance.Enqueue(new Services.DownloadJob
+                    {
+                        Kind    = Services.DownloadJobKind.AutoUpdate,
+                        Label   = entry.ModName,
+                        Execute = async () =>
+                        {
+                            var n = System.Threading.Interlocked.Increment(ref done);
+                            await Application.Current.Dispatcher.InvokeAsync(
+                                () => BusyText = $"({n}/{total}) {entry.ModName}");
+                            try   { await entry.ExecuteDownloadAsync(); }
+                            finally { tcs.TrySetResult(); }
+                        }
+                    });
                 }
+
+                await Task.WhenAll(completions.Select(t => t.Task));
                 IsBusy   = false;
                 BusyText = "";
                 UpdateSummary();
@@ -290,7 +308,7 @@ public class UpdateNotificationViewModel : ViewModelBase
                 _nexusFreeQueue  = new Queue<UpdateEntryViewModel>(freeItems);
                 _webViewTotal    = freeItems.Count;
                 _webViewProgress = 0;
-                NxmDownloadQueue.Instance.OnQueued += OnNxmQueued;
+                Services.UnifiedDownloadQueue.Instance.OnNxmQueued += OnNxmQueued;
                 AdvanceSlide();
             }
             else if (autoItems.Count > 0)
@@ -390,7 +408,7 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private void CloseWebViewPanel()
     {
-        NxmDownloadQueue.Instance.OnQueued -= OnNxmQueued;
+        UnifiedDownloadQueue.Instance.OnNxmQueued -= OnNxmQueued;
         _currentSlideEntry = null;
         _nexusFreeQueue.Clear();
         _downloadingByNxmId.Clear();
@@ -404,9 +422,9 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     public void OnWindowClosing()
     {
-        NxmDownloadQueue.Instance.OnQueued    -= OnNxmQueued;
-        NxmDownloadQueue.Instance.OnCompleted -= OnNxmCompleted;
-        NxmDownloadQueue.Instance.OnProgress  -= OnNxmProgress;
+        UnifiedDownloadQueue.Instance.OnNxmQueued    -= OnNxmQueued;
+        UnifiedDownloadQueue.Instance.OnNxmCompleted -= OnNxmCompleted;
+        UnifiedDownloadQueue.Instance.OnNxmProgress  -= OnNxmProgress;
     }
 
     private async void OnDownloadRequested(UpdateEntryViewModel entry)
@@ -451,7 +469,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         _nexusFreeQueue.Clear();
         _webViewTotal    = 1;
         _webViewProgress = 1;
-        NxmDownloadQueue.Instance.OnQueued += OnNxmQueued;
+        UnifiedDownloadQueue.Instance.OnNxmQueued += OnNxmQueued;
 
         WebViewCurrentUrl  = url;
         WebViewStatusText  = entry.ModName;

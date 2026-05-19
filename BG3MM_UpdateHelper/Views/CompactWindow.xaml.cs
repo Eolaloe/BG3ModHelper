@@ -148,10 +148,12 @@ public partial class CompactWindow : Window
                 }
             }
 
+            if (infos.Count == 0) return;
+
             foreach (var info in infos)
                 _vm.AddToInstallQueue(info);
 
-            await _vm.ProcessInstallQueue();
+            _vm.EnqueueInstallBatch();
         }
         catch (Exception ex)
         {

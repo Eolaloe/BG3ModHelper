@@ -58,8 +58,8 @@ public class MainWindowViewModel : ViewModelBase
         _ = RefreshModsAsync();
 
         // Register nxm download handler — must be after _historyStore.Load()
-        NxmDownloadQueue.Instance.SetHandler(HandleNxmItemAsync);
-        NxmDownloadQueue.Instance.OnQueued += (url, size) =>
+        UnifiedDownloadQueue.Instance.SetNxmHandler(HandleNxmItemAsync);
+        UnifiedDownloadQueue.Instance.OnNxmQueued += (url, size) =>
         {
             var label = size > 1
                 ? $"Queued: mod={url.NexusModId} file={url.NexusFileId} (+{size - 1} already waiting)"
@@ -590,6 +590,33 @@ public class MainWindowViewModel : ViewModelBase
         _queueTotal      = 0;
     }
 
+    /// <summary>
+    /// Routes the pending install queue through UnifiedDownloadQueue so local-archive
+    /// installs are serialized with NXM and auto-update downloads.
+    /// If a ProcessInstallQueue call is already running its while-loop it will pick up
+    /// any newly added items; no second job is needed.
+    /// </summary>
+    public void EnqueueInstallBatch()
+    {
+        if (_processingQueue) return;
+
+        UnifiedDownloadQueue.Instance.Enqueue(new Services.DownloadJob
+        {
+            Kind    = Services.DownloadJobKind.LocalArchive,
+            Label   = "Local archive install",
+            Execute = async () =>
+            {
+                var tcs = new TaskCompletionSource();
+                _ = Application.Current.Dispatcher.InvokeAsync(async () =>
+                {
+                    try   { await ProcessInstallQueue(); }
+                    finally { tcs.TrySetResult(); }
+                });
+                await tcs.Task;
+            }
+        });
+    }
+
     private void InitFolderWatcher()
     {
         _folderWatcher?.Dispose();
@@ -614,10 +641,10 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task OnArchiveDetected(ArchiveSourceInfo info)
     {
-        await Application.Current.Dispatcher.InvokeAsync(async () =>
+        await Application.Current.Dispatcher.InvokeAsync(() =>
         {
             AddToInstallQueue(info);
-            await ProcessInstallQueue();
+            EnqueueInstallBatch();
         });
     }
 
@@ -881,14 +908,14 @@ public class MainWindowViewModel : ViewModelBase
 
         var progress = new Progress<DownloadProgress>(p =>
         {
-            var waiting = NxmDownloadQueue.Instance.PendingCount;
+            var waiting = UnifiedDownloadQueue.Instance.PendingCount;
             var prefix  = waiting > 0 ? $"[+{waiting} queued] " : "";
             Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 StatusText    = prefix + p.Text;
                 ProgressValue = p.Percent;
             });
-            NxmDownloadQueue.Instance.ReportProgress(item, p);
+            UnifiedDownloadQueue.Instance.ReportNxmProgress(item, p);
         });
 
         var result      = await NxmInstaller.HandleAsync(item, progress);
@@ -897,11 +924,11 @@ public class MainWindowViewModel : ViewModelBase
         // NxmInstaller가 별도 인스턴스로 fileIdStore를 저장했으므로 디스크에서 다시 로드
         if (result is not null) _fileIdStore.Load();
 
-        NxmDownloadQueue.Instance.NotifyCompleted(item, result is not null, errorReason);
+        UnifiedDownloadQueue.Instance.NotifyNxmCompleted(item, result is not null, errorReason);
 
         if (result is not null)
         {
-            Application.Current.Dispatcher.InvokeAsync(() =>
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 StatusText    = "";
                 ProgressValue = 0;
@@ -939,7 +966,7 @@ public class MainWindowViewModel : ViewModelBase
         }
         else
         {
-            Application.Current.Dispatcher.InvokeAsync(() =>
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 StatusText    = "";
                 ProgressValue = 0;

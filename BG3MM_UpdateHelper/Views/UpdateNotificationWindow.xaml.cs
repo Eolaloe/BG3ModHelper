@@ -72,7 +72,7 @@ public partial class UpdateNotificationWindow : Window
             try
             {
                 var nxmUrl = NxmUrl.Parse(e.Uri);
-                NxmDownloadQueue.Instance.Enqueue(nxmUrl, e.Uri);
+                UnifiedDownloadQueue.Instance.EnqueueNxm(nxmUrl, e.Uri);
             }
             catch (Exception ex)
             {

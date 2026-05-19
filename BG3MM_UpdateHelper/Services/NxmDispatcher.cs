@@ -21,7 +21,7 @@ public static class NxmDispatcher
             case NxmValidator.ValidationResult.Valid:
                 if (url!.IsBG3)
                 {
-                    NxmDownloadQueue.Instance.Enqueue(url, rawUrl);
+                    UnifiedDownloadQueue.Instance.EnqueueNxm(url, rawUrl);
                 }
                 else
                 {
