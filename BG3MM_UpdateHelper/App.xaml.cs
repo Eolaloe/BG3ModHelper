@@ -3,6 +3,8 @@ using System.IO.Pipes;
 using System.Windows;
 using BG3MM_UpdateHelper.Services;
 using BG3MM_UpdateHelper.Views;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace BG3MM_UpdateHelper;
 
@@ -32,6 +34,12 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+
+        JsonConvert.DefaultSettings = () => new JsonSerializerSettings {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            Formatting = Formatting.Indented
+        };
+
         Logger.Info("===== Application started =====");
 
         // === Start IPC server (background) ===

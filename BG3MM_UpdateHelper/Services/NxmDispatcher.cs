@@ -58,7 +58,7 @@ public static class NxmDispatcher
 
     private static void ShowTokenExpiredDialog(NxmUrl? url)
     {
-        var modInfo = url is null ? "" : $"\n\nMod: {url.Game}/mods/{url.ModId}/files/{url.FileId}";
+        var modInfo = url is null ? "" : $"\n\nMod: {url.Game}/mods/{url.NexusModId}/files/{url.NexusFileId}";
         Application.Current?.Dispatcher.InvokeAsync(() =>
             MessageBox.Show(
                 "The Nexus download token has expired.\n\n" +

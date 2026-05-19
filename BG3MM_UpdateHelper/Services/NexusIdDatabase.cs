@@ -58,8 +58,8 @@ public class NexusIdDatabase
     {
         return _pakIndex.Values
             .SelectMany(e => e)
-            .Where(e => e.ModId == modId &&
-                        string.Equals(e.FileName, fileName, StringComparison.OrdinalIgnoreCase))
+            .Where(e => e.NexusModId == modId &&
+                        string.Equals(e.NexusFileName, fileName, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
@@ -186,9 +186,9 @@ public class NexusIdDatabase
             var mod = prop.Value;
             if (mod == null) continue;
 
-            var modId      = mod["modId"]?.Value<int>() ?? 0;
-            var modName    = mod["modName"]?.Value<string>() ?? "";
-            var uploadedBy = mod["uploadedBy"]?.Value<string>() ?? "";
+            var modId      = mod["nexusModId"]?.Value<int>() ?? 0;
+            var modName    = mod["nexusModName"]?.Value<string>() ?? "";
+            var uploadedBy = mod["nexusUploadedBy"]?.Value<string>() ?? "";
             var paks       = mod["paks"] as JArray;
             if (paks == null) continue;
 
@@ -199,14 +199,14 @@ public class NexusIdDatabase
 
                 var entry = new PakLookupEntry
                 {
-                    ModId      = modId,
-                    ModName    = modName,
-                    UploadedBy = uploadedBy,
-                    FileName   = pak["fileName"]?.Value<string>() ?? "",
-                    Version    = pak["version"]?.Value<string>() ?? "",
-                    PakFileName = pakFileName,
-                    FileId     = pak["fileId"]?.Value<long>() ?? 0,
-                    Uuid       = pak["uuid"]?.Value<string>(),
+                    NexusModId      = modId,
+                    NexusModName    = modName,
+                    NexusUploadedBy = uploadedBy,
+                    NexusFileName   = pak["nexusFileName"]?.Value<string>() ?? "",
+                    NexusFileVersion = pak["nexusFileVersion"]?.Value<string>() ?? "",
+                    PakFileName     = pakFileName,
+                    NexusFileId     = pak["nexusFileId"]?.Value<long>() ?? 0,
+                    MetaUuid        = pak["metaUuid"]?.Value<string>(),
                 };
 
                 var key = NormalizeKey(pakFileName);
@@ -232,17 +232,16 @@ public class NexusIdDatabase
 /// </summary>
 public class PakLookupEntry
 {
-    public int    ModId      { get; init; }
-    public string ModName    { get; init; } = "";
-    public string UploadedBy { get; init; } = "";
-    public string FileName   { get; init; } = "";  // File tab title on Nexus
-    public string Version    { get; init; } = "";
-    public string PakFileName { get; init; } = "";
-    public long   FileId     { get; init; }
-    public string? Uuid      { get; init; }
+    public int    NexusModId      { get; init; }
+    public string NexusModName    { get; init; } = "";
+    public string NexusUploadedBy { get; init; } = "";
+    public string NexusFileName   { get; init; } = "";
+    public string NexusFileVersion { get; init; } = "";
+    public string PakFileName     { get; init; } = "";
+    public long   NexusFileId     { get; init; }
+    public string? MetaUuid       { get; init; }
 
-    /// <summary>Display string for conflict resolution UI: [uploadedBy] ModName / FileName</summary>
-    public string DisplayLabel => $"[{UploadedBy}] {ModName} / {FileName}";
+    public string DisplayLabel => $"[{NexusUploadedBy}] {NexusModName} / {NexusFileName}";
 }
 
 
@@ -250,17 +249,17 @@ public class PakLookupEntry
 /// <summary>Single UUID contribution entry.</summary>
 public class ContributeEntry
 {
-    [JsonProperty("pakFileName")] public string PakFileName { get; set; } = "";
-    [JsonProperty("uuid")]        public string Uuid        { get; set; } = "";
-    [JsonProperty("modId")]       public int    ModId       { get; set; }
-    [JsonProperty("fileId")]      public long   FileId      { get; set; }
+    [JsonProperty("pakFileName")]  public string PakFileName  { get; set; } = "";
+    [JsonProperty("metaUuid")]     public string MetaUuid     { get; set; } = "";
+    [JsonProperty("nexusModId")]   public int    NexusModId   { get; set; }
+    [JsonProperty("nexusFileId")]  public long   NexusFileId  { get; set; }
 
     public ContributeEntry() { }
-    public ContributeEntry(string pakFileName, string uuid, int modId, long fileId)
+    public ContributeEntry(string pakFileName, string metaUuid, int nexusModId, long nexusFileId)
     {
         PakFileName = pakFileName;
-        Uuid        = uuid;
-        ModId       = modId;
-        FileId      = fileId;
+        MetaUuid    = metaUuid;
+        NexusModId  = nexusModId;
+        NexusFileId = nexusFileId;
     }
 }

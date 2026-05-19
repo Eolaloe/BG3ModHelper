@@ -53,7 +53,7 @@ public static class ModScanner
                     if (mod != null)
                     {
                         mod.PakFilePath     = pakPath;
-                        mod.PakFileModified = modifiedUtc;
+                        mod.PakFileLastWriteTime = modifiedUtc;
                         results.Add(mod);
 
                         cache.Mods[pakPath] = new InstalledModCacheEntry
@@ -130,11 +130,11 @@ public static class ModScanner
 
         return new InstalledMod
         {
-            UUID          = XAttr(moduleInfo, "UUID"),
-            Name          = XAttr(moduleInfo, "Name"),
-            Author        = XAttr(moduleInfo, "Author"),
-            PublishHandle = XULongAttr(moduleInfo, "PublishHandle"),
-            Version       = BuildVersion(moduleInfo),
+            MetaUuid           = XAttr(moduleInfo, "UUID"),
+            MetaModuleName     = XAttr(moduleInfo, "Name"),
+            MetaAuthor         = XAttr(moduleInfo, "Author"),
+            ModioPublishHandle = XULongAttr(moduleInfo, "PublishHandle"),
+            MetaVersion        = BuildVersion(moduleInfo),
         };
     }
 

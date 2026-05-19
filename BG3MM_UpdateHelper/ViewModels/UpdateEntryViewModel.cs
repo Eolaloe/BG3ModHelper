@@ -53,10 +53,10 @@ public partial class UpdateEntryViewModel : ViewModelBase
     }
 
     // === Identity ===
-    public string UUID           => _entry.UUID;
-    public string ModName        => _entry.ModName;
-    public string CurrentVersion => _entry.CurrentVersion;
-    public string NewVersion     => _entry.NewVersion;
+    public string UUID           => _entry.MetaUuid;
+    public string ModName        => _entry.UpdateModName;
+    public string CurrentVersion => _entry.UpdateCurrentVersion;
+    public string NewVersion     => _entry.UpdateNewVersion;
 
     public string VersionDisplay =>
         string.IsNullOrEmpty(NewVersion)
@@ -69,9 +69,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         get
         {
             var v = ActiveSource == UpdateSource.MODIO
-                ? _entry.ModioNewVersion
-                : _entry.NexusNewVersion;
-            return string.IsNullOrEmpty(v) ? _entry.NewVersion : v;
+                ? _entry.ModioFileVersion
+                : _entry.NexusFileVersion;
+            return string.IsNullOrEmpty(v) ? _entry.UpdateNewVersion : v;
         }
     }
 
@@ -136,7 +136,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         CanAutoDownload      ? "PrimaryActionButton"  : "SecondaryActionButton";
 
     public string ActivePageUrl =>
-        ActiveSource == UpdateSource.MODIO ? _entry.ModioUrl : _entry.NexusUrl;
+        ActiveSource == UpdateSource.MODIO ? _entry.ModioProfileUrl : _entry.NexusModPageUrl;
 
     // === Selection ===
     public bool IsSelected
@@ -245,7 +245,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
                 _entry.PakFilePath ?? "",
                 _modsFolder,
                 _backupEnabled,
-                uuid:        _entry.UUID,
+                uuid:        _entry.MetaUuid,
                 modId:       _entry.NexusModId ?? 0,
                 fileId:      nexusFileId,
                 fileName:    nexusFileName,
@@ -296,11 +296,11 @@ public partial class UpdateEntryViewModel : ViewModelBase
         if (_modioApi == null)
             throw new InvalidOperationException("mod.io API not initialized.");
 
-        var file = await _modioApi.GetLatestFileAsync(_entry.PublishHandle)
-            ?? throw new InvalidOperationException($"No file found for mod.io mod {_entry.PublishHandle}.");
+        var file = await _modioApi.GetLatestFileAsync(_entry.ModioPublishHandle)
+            ?? throw new InvalidOperationException($"No file found for mod.io mod {_entry.ModioPublishHandle}.");
 
-        Logger.Info($"mod.io download URL obtained: {file.FileName}");
-        return file.BinaryUrl;
+        Logger.Info($"mod.io download URL obtained: {file.ModioFileName}");
+        return file.ModioBinaryUrl;
     }
 
     private async Task<(string url, long fileId, string fileName)> GetNexusDownloadUrlAsync()
@@ -315,13 +315,13 @@ public partial class UpdateEntryViewModel : ViewModelBase
                 "(Check logs for the exact server response — 403/429/404)");
 
         // Step 2: Premium download URL (download_link.json)
-        var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.FileId);
+        var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.NexusFileId);
         if (string.IsNullOrEmpty(url))
             throw new InvalidOperationException(
-                $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.FileId}).\n" +
+                $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.NexusFileId}).\n" +
                 "(If this persists, verify that your API key has Premium access.)");
 
-        return (url, latest.FileId, latest.Name);
+        return (url, latest.NexusFileId, latest.NexusFileName);
     }
 
     // === Action dispatch ===
@@ -398,20 +398,20 @@ public partial class UpdateEntryViewModel : ViewModelBase
         {
             UpdateSource.NEXUSMODS when _entry.NexusModId.HasValue =>
                 $"https://www.nexusmods.com/baldursgate3/mods/{_entry.NexusModId.Value}",
-            UpdateSource.MODIO when !string.IsNullOrEmpty(_entry.ModioUrl) =>
-                _entry.ModioUrl,
+            UpdateSource.MODIO when !string.IsNullOrEmpty(_entry.ModioProfileUrl) =>
+                _entry.ModioProfileUrl,
             _ => null
         };
 
         _historyStore.Add(new DownloadHistoryEntry
         {
-            DownloadedAt = DateTime.UtcNow,
-            ModName      = ModName,
-            FromVersion  = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
-            ToVersion    = NewVersionDisplay,
-            Source       = source,
-            PageUrl      = pageUrl,
-            Success      = success,
+            HistoryDownloadedAt = DateTime.UtcNow,
+            HistoryModName      = ModName,
+            HistoryFromVersion  = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
+            HistoryToVersion    = NewVersionDisplay,
+            HistorySource       = source,
+            HistoryPageUrl      = pageUrl,
+            HistorySuccess      = success,
         });
     }
 

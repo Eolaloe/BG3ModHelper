@@ -2,16 +2,16 @@ namespace BG3MM_UpdateHelper.Models;
 
 public class ModUpdateEntry
 {
-    public string UUID           { get; set; } = "";
-    public ulong  PublishHandle  { get; set; }
-    public int?   NexusModId     { get; set; }
-    public string ModName        { get; set; } = "";
-    public string CurrentVersion { get; set; } = "";
-    public string NewVersion     { get; set; } = "";  // higher of the two (display fallback)
+    public string MetaUuid            { get; set; } = "";
+    public ulong  ModioPublishHandle  { get; set; }
+    public int?   NexusModId          { get; set; }
+    public string UpdateModName       { get; set; } = "";
+    public string UpdateCurrentVersion { get; set; } = "";
+    public string UpdateNewVersion    { get; set; } = "";  // higher of the two (display fallback)
 
     // Per-source versions — used when switching active source
-    public string ModioNewVersion { get; set; } = "";
-    public string NexusNewVersion { get; set; } = "";
+    public string ModioFileVersion { get; set; } = "";
+    public string NexusFileVersion { get; set; } = "";
 
     // Recorded after download for accurate update detection (spec §4.11)
     public long NexusFileId { get; set; }
@@ -20,9 +20,9 @@ public class ModUpdateEntry
     public List<UpdateSource>  AvailableSources { get; set; } = new();
     public UpdateSource?       PreferredSource  { get; set; }
 
-    public string NexusUrl    { get; set; } = "";
-    public string ModioUrl    { get; set; } = "";
-    public string PakFilePath { get; set; } = "";
+    public string NexusModPageUrl { get; set; } = "";
+    public string ModioProfileUrl { get; set; } = "";
+    public string PakFilePath     { get; set; } = "";
 
     public bool   CanAutoDownload { get; set; }
     public string Changelog       { get; set; } = "";

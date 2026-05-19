@@ -59,8 +59,8 @@ public class MainWindowViewModel : ViewModelBase
         NxmDownloadQueue.Instance.OnQueued += (url, size) =>
         {
             var label = size > 1
-                ? $"Queued: mod={url.ModId} file={url.FileId} (+{size - 1} already waiting)"
-                : $"Queued: mod={url.ModId} file={url.FileId}";
+                ? $"Queued: mod={url.NexusModId} file={url.NexusFileId} (+{size - 1} already waiting)"
+                : $"Queued: mod={url.NexusModId} file={url.NexusFileId}";
             AddActivity(label);
         };
 
@@ -590,7 +590,7 @@ public class MainWindowViewModel : ViewModelBase
         var existing = _installedMods.FirstOrDefault(m =>
             string.Equals(Path.GetFileName(m.PakFilePath), info.PakFileName,
                           StringComparison.OrdinalIgnoreCase));
-        var fromVersion = existing?.Version ?? "Not installed";
+        var fromVersion = existing?.MetaVersion ?? "Not installed";
 
         IsScanning  = true;
         StatusText  = $"Installing {info.ModName}...";
@@ -615,13 +615,13 @@ public class MainWindowViewModel : ViewModelBase
 
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                DownloadedAt = DateTime.UtcNow,
-                ModName      = info.ModName,
-                FromVersion  = fromVersion,
-                ToVersion    = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
-                Source       = finalSource,
-                PageUrl      = info.NexusPageUrl,
-                Success      = true,
+                HistoryDownloadedAt = DateTime.UtcNow,
+                HistoryModName      = info.ModName,
+                HistoryFromVersion  = fromVersion,
+                HistoryToVersion    = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
+                HistorySource       = finalSource,
+                HistoryPageUrl      = info.NexusPageUrl,
+                HistorySuccess      = true,
             });
 
             AddActivity($"Installed: {info.ModName}");
@@ -650,12 +650,12 @@ public class MainWindowViewModel : ViewModelBase
         {
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                DownloadedAt = DateTime.UtcNow,
-                ModName      = info.ModName,
-                FromVersion  = fromVersion,
-                ToVersion    = "—",
-                Source       = finalSource,
-                Success      = false,
+                HistoryDownloadedAt = DateTime.UtcNow,
+                HistoryModName      = info.ModName,
+                HistoryFromVersion  = fromVersion,
+                HistoryToVersion    = "—",
+                HistorySource       = finalSource,
+                HistorySuccess      = false,
             });
             MessageBox.Show($"Installation failed:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
@@ -718,9 +718,9 @@ public class MainWindowViewModel : ViewModelBase
 
             // Remove fileId records for mods no longer installed
             _fileIdStore.PruneOrphans(
-                _installedMods.Select(m => m.UUID).ToHashSet(StringComparer.OrdinalIgnoreCase));
+                _installedMods.Select(m => m.MetaUuid).ToHashSet(StringComparer.OrdinalIgnoreCase));
 
-            var modioCount = _installedMods.Count(m => m.PublishHandle != 0);
+            var modioCount = _installedMods.Count(m => m.ModioPublishHandle != 0);
             AddActivity("Scan complete -- " + _installedModsCount +
                         " mod(s), " + modioCount + " on mod.io");
 
@@ -808,7 +808,7 @@ public class MainWindowViewModel : ViewModelBase
             _ownerWindow.Activate();
         });
 
-        AddActivity($"Downloading from Nexus: mod={item.Url.ModId} file={item.Url.FileId}");
+        AddActivity($"Downloading from Nexus: mod={item.Url.NexusModId} file={item.Url.NexusFileId}");
 
         var progress = new Progress<DownloadProgress>(p =>
         {
@@ -831,17 +831,17 @@ public class MainWindowViewModel : ViewModelBase
                 ProgressValue = 0;
             });
 
-            AddActivity($"Installed from Nexus: {result.ModName}");
+            AddActivity($"Installed from Nexus: {result.UpdateModName}");
 
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                DownloadedAt = DateTime.UtcNow,
-                ModName      = result.ModName,
-                FromVersion  = "",
-                ToVersion    = result.ModVersion,
-                Source       = "Nexus",
-                PageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{result.ModId}",
-                Success      = true,
+                HistoryDownloadedAt = DateTime.UtcNow,
+                HistoryModName      = result.UpdateModName,
+                HistoryFromVersion  = "",
+                HistoryToVersion    = result.UpdateNewVersion,
+                HistorySource       = "Nexus",
+                HistoryPageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{result.NexusModId}",
+                HistorySuccess      = true,
             });
 
             _ = RefreshModsAsync();
@@ -854,17 +854,17 @@ public class MainWindowViewModel : ViewModelBase
                 ProgressValue = 0;
             });
 
-            AddActivity($"Download failed: mod={item.Url.ModId}");
+            AddActivity($"Download failed: mod={item.Url.NexusModId}");
 
             _historyStore.Add(new Models.DownloadHistoryEntry
             {
-                DownloadedAt = DateTime.UtcNow,
-                ModName      = $"Mod {item.Url.ModId}",
-                FromVersion  = "",
-                ToVersion    = "",
-                Source       = "Nexus",
-                PageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{item.Url.ModId}",
-                Success      = false,
+                HistoryDownloadedAt = DateTime.UtcNow,
+                HistoryModName      = $"Mod {item.Url.NexusModId}",
+                HistoryFromVersion  = "",
+                HistoryToVersion    = "",
+                HistorySource       = "Nexus",
+                HistoryPageUrl      = $"https://www.nexusmods.com/baldursgate3/mods/{item.Url.NexusModId}",
+                HistorySuccess      = false,
             });
         }
     }

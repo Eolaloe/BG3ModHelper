@@ -93,11 +93,11 @@ public class NexusApi(string apiKey)
             var candidates = files
                 .Select(f => new NexusModFile
                 {
-                    FileId       = f["file_id"]?.Value<long>() ?? 0,
-                    Name         = f["name"]?.Value<string>() ?? "",
-                    Version      = f["version"]?.Value<string>() ?? "",
-                    CategoryName = f["category_name"]?.Value<string>() ?? "",
-                    UploadedAt   = DateTimeOffset
+                    NexusFileId           = f["file_id"]?.Value<long>() ?? 0,
+                    NexusFileName         = f["name"]?.Value<string>() ?? "",
+                    NexusFileVersion      = f["version"]?.Value<string>() ?? "",
+                    NexusFileCategoryName = f["category_name"]?.Value<string>() ?? "",
+                    UploadedAt            = DateTimeOffset
                         .FromUnixTimeSeconds(f["uploaded_timestamp"]?.Value<long>() ?? 0)
                         .UtcDateTime
                 })
@@ -105,7 +105,7 @@ public class NexusApi(string apiKey)
                 .ToList();
 
             return candidates.FirstOrDefault(f =>
-                       f.CategoryName.Equals("MAIN", StringComparison.OrdinalIgnoreCase))
+                       f.NexusFileCategoryName.Equals("MAIN", StringComparison.OrdinalIgnoreCase))
                    ?? candidates.First();
         }
         catch (Exception ex)

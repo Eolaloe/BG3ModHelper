@@ -47,7 +47,7 @@ public class ModFileIdStore
     public long? GetFileId(string uuid)
     {
         if (_store.TryGetValue(uuid.ToLowerInvariant(), out var entry))
-            return entry.FileId;
+            return entry.NexusFileId;
         return null;
     }
 
@@ -98,4 +98,4 @@ public class ModFileIdStore
 }
 
 /// <summary>Single entry in the local fileId store.</summary>
-public record FileIdEntry(int ModId, long FileId, string FileName = "");
+public record FileIdEntry(int NexusModId, long NexusFileId, string NexusFileName = "");

@@ -14,11 +14,11 @@ public class NexusModData
 /// <summary>A single file entry returned by the Nexus files endpoint.</summary>
 public class NexusModFile
 {
-    public long     FileId        { get; set; }
-    public string   Name          { get; set; } = "";
-    public string   Version       { get; set; } = "";
-    public string   CategoryName  { get; set; } = "";
-    public DateTime UploadedAt    { get; set; }
+    public long     NexusFileId           { get; set; }
+    public string   NexusFileName         { get; set; } = "";
+    public string   NexusFileVersion      { get; set; } = "";
+    public string   NexusFileCategoryName { get; set; } = "";
+    public DateTime UploadedAt            { get; set; }
 }
 
 /// <summary>Nexus user info — used to determine Premium status.</summary>

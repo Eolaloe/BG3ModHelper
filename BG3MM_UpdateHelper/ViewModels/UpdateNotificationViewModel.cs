@@ -115,7 +115,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         try
         {
             var newUpdates = await _reloadFunc();
-            var newDict    = newUpdates.ToDictionary(u => u.UUID);
+            var newDict    = newUpdates.ToDictionary(u => u.MetaUuid);
 
             // Remove entries no longer in the new update list
             var toRemove = Entries
@@ -125,7 +125,7 @@ public class UpdateNotificationViewModel : ViewModelBase
 
             // Add new entries
             var existing = Entries.Select(e => e.UUID).ToHashSet();
-            foreach (var u in newUpdates.Where(u => !existing.Contains(u.UUID)))
+            foreach (var u in newUpdates.Where(u => !existing.Contains(u.MetaUuid)))
             {
                 var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
                     _backupEnabled, _modioApi, _nexusApi, _fileIdStore, _historyStore);

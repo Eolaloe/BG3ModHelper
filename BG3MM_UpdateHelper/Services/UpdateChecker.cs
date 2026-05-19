@@ -8,7 +8,7 @@ namespace BG3MM_UpdateHelper.Services;
 /// Orchestrates the update check against Nexus Mods and mod.io.
 ///
 /// Flow:
-///   mod.io:  PublishHandle → batch API call → version compare
+///   mod.io:  ModioPublishHandle → batch API call → version compare
 ///   Nexus:   pakFileName → DB lookup → fileId/version compare (no API calls)
 ///
 /// Nexus update detection (spec §4.11):
@@ -30,7 +30,7 @@ public static class UpdateChecker
         var modioCache = ModioApi.LoadCache();
 
         var modioMods = installedMods
-            .Where(m => m.PublishHandle != 0 && modioApi?.CanMakeRequest() == true)
+            .Where(m => m.ModioPublishHandle != 0 && modioApi?.CanMakeRequest() == true)
             .ToList();
 
         if (modioApi != null && modioMods.Count > 0)
@@ -49,17 +49,17 @@ public static class UpdateChecker
             ModUpdateEntry? entry = null;
 
             // === mod.io check (unchanged) ===
-            if (mod.PublishHandle != 0 &&
-                modioCache.Mods.TryGetValue(mod.UUID, out var modioData))
+            if (mod.ModioPublishHandle != 0 &&
+                modioCache.Mods.TryGetValue(mod.MetaUuid, out var modioData))
             {
-                if (IsNewer(modioData.LatestVersion, mod.Version))
+                if (IsNewer(modioData.ModioFileVersion, mod.MetaVersion))
                 {
                     entry = EnsureEntry(entries, mod);
-                    entry.NewVersion      = modioData.LatestVersion;
-                    entry.ModioNewVersion = modioData.LatestVersion;
-                    entry.ModioUrl        = modioData.ProfileUrl;
+                    entry.UpdateNewVersion  = modioData.ModioFileVersion;
+                    entry.ModioFileVersion  = modioData.ModioFileVersion;
+                    entry.ModioProfileUrl   = modioData.ModioProfileUrl;
                     entry.AvailableSources.Add(UpdateSource.MODIO);
-                    entry.Changelog       = "";
+                    entry.Changelog         = "";
                 }
             }
 
@@ -72,42 +72,40 @@ public static class UpdateChecker
                 // Case 2 fallback: pakFileName changed but same modId+fileName
                 if (dbEntries.Count == 0 && fileIdStore != null)
                 {
-                    var stored = fileIdStore.GetEntry(mod.UUID);
-                    if (stored != null && stored.ModId != 0 && !string.IsNullOrEmpty(stored.FileName))
-                        dbEntries = nexusDb.LookupByModIdAndFileName(stored.ModId, stored.FileName);
+                    var stored = fileIdStore.GetEntry(mod.MetaUuid);
+                    if (stored != null && stored.NexusModId != 0 && !string.IsNullOrEmpty(stored.NexusFileName))
+                        dbEntries = nexusDb.LookupByModIdAndFileName(stored.NexusModId, stored.NexusFileName);
                 }
 
                 // Resolve conflict: uuid match → auto, else skip
                 var dbEntry = dbEntries.Count == 1
                     ? dbEntries[0]
                     : dbEntries.FirstOrDefault(e =>
-                        string.Equals(e.Uuid, mod.UUID,
+                        string.Equals(e.MetaUuid, mod.MetaUuid,
                             StringComparison.OrdinalIgnoreCase));
 
                 if (dbEntry != null)
                 {
-                    // Inject modId if not already set
                     if (!mod.NexusModId.HasValue)
-                        mod.NexusModId = dbEntry.ModId;
+                        mod.NexusModId = dbEntry.NexusModId;
 
                     bool hasUpdate = HasNexusUpdate(mod, dbEntry, fileIdStore);
                     if (hasUpdate)
                     {
                         entry = EnsureEntry(entries, mod);
-                        entry.NexusNewVersion = dbEntry.Version;
-                        entry.NexusFileId     = dbEntry.FileId;
-                        if (string.IsNullOrEmpty(entry.NewVersion) ||
-                            IsNewer(dbEntry.Version, entry.NewVersion))
-                            entry.NewVersion = dbEntry.Version;
+                        entry.NexusFileVersion = dbEntry.NexusFileVersion;
+                        entry.NexusFileId      = dbEntry.NexusFileId;
+                        if (string.IsNullOrEmpty(entry.UpdateNewVersion) ||
+                            IsNewer(dbEntry.NexusFileVersion, entry.UpdateNewVersion))
+                            entry.UpdateNewVersion = dbEntry.NexusFileVersion;
 
-                        entry.NexusUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.ModId}";
+                        entry.NexusModPageUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.NexusModId}";
                         entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
                     }
 
-                    // Collect UUID contribution if DB entry has none
-                    if (dbEntry.Uuid == null && !string.IsNullOrEmpty(mod.UUID))
+                    if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
                         contributions.Add(new ContributeEntry(
-                            dbEntry.PakFileName, mod.UUID, dbEntry.ModId, dbEntry.FileId));
+                            dbEntry.PakFileName, mod.MetaUuid, dbEntry.NexusModId, dbEntry.NexusFileId));
                 }
             }
 
@@ -144,12 +142,11 @@ public static class UpdateChecker
     private static bool HasNexusUpdate(
         InstalledMod mod, PakLookupEntry dbEntry, ModFileIdStore? store)
     {
-        var localFileId = store?.GetFileId(mod.UUID);
+        var localFileId = store?.GetFileId(mod.MetaUuid);
         if (localFileId.HasValue)
-            return localFileId.Value != dbEntry.FileId;
+            return localFileId.Value != dbEntry.NexusFileId;
 
-        // Fallback: version string (may produce false positives once)
-        return IsNewer(dbEntry.Version, mod.Version);
+        return IsNewer(dbEntry.NexusFileVersion, mod.MetaVersion);
     }
 
     // === mod.io cache refresh ===
@@ -161,7 +158,7 @@ public static class UpdateChecker
 
         var handleToUuid = new Dictionary<ulong, string>();
         foreach (var mod in mods)
-            handleToUuid.TryAdd(mod.PublishHandle, mod.UUID);
+            handleToUuid.TryAdd(mod.ModioPublishHandle, mod.MetaUuid);
 
         var batch = await api.GetModsBatchAsync(handleToUuid.Keys);
         foreach (var (handle, data) in batch)
@@ -196,18 +193,18 @@ public static class UpdateChecker
     private static ModUpdateEntry EnsureEntry(
         Dictionary<string, ModUpdateEntry> dict, InstalledMod mod)
     {
-        if (!dict.TryGetValue(mod.UUID, out var entry))
+        if (!dict.TryGetValue(mod.MetaUuid, out var entry))
         {
             entry = new ModUpdateEntry
             {
-                UUID           = mod.UUID,
-                PublishHandle  = mod.PublishHandle,
-                NexusModId     = mod.NexusModId,
-                ModName        = mod.Name,
-                CurrentVersion = mod.Version,
-                PakFilePath    = mod.PakFilePath,
+                MetaUuid             = mod.MetaUuid,
+                ModioPublishHandle   = mod.ModioPublishHandle,
+                NexusModId           = mod.NexusModId,
+                UpdateModName        = mod.MetaModuleName,
+                UpdateCurrentVersion = mod.MetaVersion,
+                PakFilePath          = mod.PakFilePath,
             };
-            dict[mod.UUID] = entry;
+            dict[mod.MetaUuid] = entry;
         }
         return entry;
     }

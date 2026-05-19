@@ -4,29 +4,29 @@ namespace BG3MM_UpdateHelper.Models;
 public class ModioModData
 {
     /// <summary>mod.io global mod ID — matches meta.lsx PublishHandle.</summary>
-    public ulong   ModId      { get; set; }
-    public string  Name       { get; set; } = "";
-    public string  Summary    { get; set; } = "";
-    public string  ProfileUrl { get; set; } = "";
-    public string  LatestVersion { get; set; } = "";
-    public DateTime UpdatedAt { get; set; }
+    public ulong   ModioModId        { get; set; }
+    public string  ModioModName      { get; set; } = "";
+    public string  ModioSummary      { get; set; } = "";
+    public string  ModioProfileUrl   { get; set; } = "";
+    public string  ModioFileVersion  { get; set; } = "";
+    public DateTime ModioDateUpdated { get; set; }
 
     /// <summary>Latest modfile ID — passed to GetLatestFileAsync for the download URL.</summary>
-    public long LatestFileId { get; set; }
+    public long ModioFileId { get; set; }
 }
 
 /// <summary>A single modfile entry containing the download URL.</summary>
 public class ModioModFile
 {
-    public long   Id          { get; set; }
-    public string Version     { get; set; } = "";
-    public string FileName    { get; set; } = "";
+    public long   ModioFileId   { get; set; }
+    public string ModioFileVersion { get; set; } = "";
+    public string ModioFileName { get; set; } = "";
 
     /// <summary>Temporary download URL. Expires at DateExpires.</summary>
-    public string BinaryUrl   { get; set; } = "";
+    public string ModioBinaryUrl { get; set; } = "";
 
-    /// <summary>Unix timestamp when BinaryUrl expires.</summary>
-    public long   DateExpires { get; set; }
+    /// <summary>Unix timestamp when ModioBinaryUrl expires.</summary>
+    public long   DateExpires   { get; set; }
 
     public bool IsExpired =>
         DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= DateExpires;

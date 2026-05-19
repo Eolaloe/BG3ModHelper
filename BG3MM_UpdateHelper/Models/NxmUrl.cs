@@ -8,8 +8,8 @@ namespace BG3MM_UpdateHelper.Models;
 /// </summary>
 public sealed record NxmUrl(
     string Game,
-    int    ModId,
-    int    FileId,
+    int    NexusModId,
+    long   NexusFileId,
     string Key,
     long   Expires)
 {
@@ -41,11 +41,11 @@ public sealed record NxmUrl(
         var expires = long.TryParse(q["expires"], out var e) ? e : 0;
 
         return new NxmUrl(
-            Game:    u.Host,
-            ModId:   modId,
-            FileId:  fileId,
-            Key:     key,
-            Expires: expires
+            Game:        u.Host,
+            NexusModId:  modId,
+            NexusFileId: fileId,
+            Key:         key,
+            Expires:     expires
         );
     }
 

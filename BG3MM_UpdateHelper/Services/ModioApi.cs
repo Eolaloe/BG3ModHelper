@@ -85,15 +85,15 @@ public class ModioApi
 
         return new ModioModData
         {
-            ModId         = id,
-            Name          = mod["name"]?.Value<string>() ?? "",
-            Summary       = mod["summary"]?.Value<string>() ?? "",
-            ProfileUrl    = mod["profile_url"]?.Value<string>() ?? "",
-            LatestVersion = modfile?["version"]?.Value<string>() ?? "",
-            UpdatedAt     = DateTimeOffset
+            ModioModId      = id,
+            ModioModName    = mod["name"]?.Value<string>() ?? "",
+            ModioSummary    = mod["summary"]?.Value<string>() ?? "",
+            ModioProfileUrl = mod["profile_url"]?.Value<string>() ?? "",
+            ModioFileVersion = modfile?["version"]?.Value<string>() ?? "",
+            ModioDateUpdated = DateTimeOffset
                 .FromUnixTimeSeconds(mod["date_updated"]?.Value<long>() ?? 0)
                 .UtcDateTime,
-            LatestFileId  = modfile?["id"]?.Value<long>() ?? 0
+            ModioFileId     = modfile?["id"]?.Value<long>() ?? 0
         };
     }
 
@@ -117,11 +117,11 @@ public class ModioApi
 
             return new ModioModFile
             {
-                Id          = first["id"]?.Value<long>() ?? 0,
-                Version     = first["version"]?.Value<string>() ?? "",
-                FileName    = first["filename"]?.Value<string>() ?? "",
-                BinaryUrl   = first["download"]?["binary_url"]?.Value<string>() ?? "",
-                DateExpires = first["download"]?["date_expires"]?.Value<long>() ?? 0
+                ModioFileId      = first["id"]?.Value<long>() ?? 0,
+                ModioFileVersion = first["version"]?.Value<string>() ?? "",
+                ModioFileName    = first["filename"]?.Value<string>() ?? "",
+                ModioBinaryUrl   = first["download"]?["binary_url"]?.Value<string>() ?? "",
+                DateExpires      = first["download"]?["date_expires"]?.Value<long>() ?? 0
             };
         }
         catch (Exception ex)
@@ -162,8 +162,8 @@ public class ModioApi
                 foreach (var mod in arr.OfType<JObject>())
                 {
                     var data = await BuildModioDataAsync(mod);
-                    if (data.ModId > 0)
-                        result[data.ModId] = data;
+                    if (data.ModioModId > 0)
+                        result[data.ModioModId] = data;
                 }
             }
             catch (Exception ex)

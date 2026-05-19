@@ -31,11 +31,11 @@ public static class NxmInstaller
 
         var api = new NexusApi(settings.NexusAPIKey ?? "");
 
-        Logger.Info($"NxmInstaller: resolving download URL for mod={item.Url.ModId} file={item.Url.FileId}");
+        Logger.Info($"NxmInstaller: resolving download URL for mod={item.Url.NexusModId} file={item.Url.NexusFileId}");
 
         var downloadUrl = await api.GetDownloadUrlAsync(
-            item.Url.ModId,
-            item.Url.FileId,
+            item.Url.NexusModId,
+            item.Url.NexusFileId,
             nxmKey:     item.Url.Key,
             nxmExpires: item.Url.Expires);
 
@@ -53,26 +53,26 @@ public static class NxmInstaller
                 modsFolder:      modsFolder,
                 backupEnabled:   settings.BackupBeforeUpdate,
                 uuid:            null,
-                modId:           item.Url.ModId,
-                fileId:          item.Url.FileId,
+                modId:           item.Url.NexusModId,
+                fileId:          item.Url.NexusFileId,
                 fileName:        "",
                 fileIdStore:     null,
                 progress:        progress);
 
             var pakFileName = Path.GetFileName(installedPath);
             var pak         = ModScanner.InspectPak(installedPath);
-            var modName     = (!string.IsNullOrEmpty(pak?.Name)) ? pak!.Name : pakFileName;
+            var modName     = (!string.IsNullOrEmpty(pak?.MetaModuleName)) ? pak!.MetaModuleName : pakFileName;
 
             // Nexus file version + name are more accurate than meta.lsx
-            var (nexusVersion, nexusFileName) = await api.GetFileMetaAsync(item.Url.ModId, item.Url.FileId);
-            var modVersion  = nexusVersion  ?? pak?.Version ?? "";
+            var (nexusVersion, nexusFileName) = await api.GetFileMetaAsync(item.Url.NexusModId, item.Url.NexusFileId);
+            var modVersion  = nexusVersion  ?? pak?.MetaVersion ?? "";
             var nexusFile   = nexusFileName ?? "";
 
             Logger.Info($"NxmInstaller: installed {pakFileName} from nxm (version: {modVersion})");
 
-            await ContributeAsync(installedPath, pak, item.Url.ModId, item.Url.FileId, nexusFile);
+            await ContributeAsync(installedPath, pak, item.Url.NexusModId, item.Url.NexusFileId, nexusFile);
 
-            return new NxmInstallResult(installedPath, pakFileName, modName, modVersion, item.Url.ModId, item.Url.FileId);
+            return new NxmInstallResult(installedPath, pakFileName, modName, modVersion, item.Url.NexusModId, item.Url.NexusFileId);
         }
         catch (Exception ex)
         {
@@ -86,7 +86,7 @@ public static class NxmInstaller
     {
         try
         {
-            if (pak is null || string.IsNullOrEmpty(pak.UUID))
+            if (pak is null || string.IsNullOrEmpty(pak.MetaUuid))
             {
                 Logger.Warn("NxmInstaller: pak inspection returned no UUID — skipping");
                 return;
@@ -99,7 +99,7 @@ public static class NxmInstaller
             {
                 var fileIdStore = new ModFileIdStore();
                 fileIdStore.Load();
-                fileIdStore.SetFileId(pak.UUID, modId, fileId, nexusFileName);
+                fileIdStore.SetFileId(pak.MetaUuid, modId, fileId, nexusFileName);
             }
             catch (Exception ex)
             {
@@ -108,7 +108,7 @@ public static class NxmInstaller
 
             // 2) Community DB
             var db = new NexusIdDatabase();
-            await db.ContributeUuidAsync(pakFileName, pak.UUID, modId, fileId);
+            await db.ContributeUuidAsync(pakFileName, pak.MetaUuid, modId, fileId);
         }
         catch (Exception ex)
         {
@@ -121,7 +121,7 @@ public static class NxmInstaller
 public sealed record NxmInstallResult(
     string InstalledPath,
     string PakFileName,
-    string ModName,
-    string ModVersion,
-    int    ModId,
-    long   FileId);
+    string UpdateModName,
+    string UpdateNewVersion,
+    int    NexusModId,
+    long   NexusFileId);

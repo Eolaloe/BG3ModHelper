@@ -49,7 +49,7 @@ public sealed class NxmDownloadQueue
         _queue.Enqueue(new NxmQueueItem(url, rawUrl, DateTime.UtcNow));
 
         var queueSize = _queue.Count;
-        Logger.Info($"NxmDownloadQueue: enqueued {url.Game}/mods/{url.ModId}/files/{url.FileId} (queue size: {queueSize})");
+        Logger.Info($"NxmDownloadQueue: enqueued {url.Game}/mods/{url.NexusModId}/files/{url.NexusFileId} (queue size: {queueSize})");
 
         // Notify queue listener (UI layer)
         OnQueued?.Invoke(url, queueSize);

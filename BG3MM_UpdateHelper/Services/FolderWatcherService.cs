@@ -385,8 +385,8 @@ public sealed class FolderWatcherService : IDisposable
         int           zipModId,
         bool          isDirectPak)
     {
-        var modName  = mod?.Name ?? Path.GetFileNameWithoutExtension(pakFileName);
-        var handle   = mod?.PublishHandle ?? 0;
+        var modName  = mod?.MetaModuleName ?? Path.GetFileNameWithoutExtension(pakFileName);
+        var handle   = mod?.ModioPublishHandle ?? 0;
         var fileBase = Path.GetFileNameWithoutExtension(pakFileName);
 
         var nexusEntry = _nexusDb.LookupSingle(fileBase);
@@ -426,7 +426,7 @@ public sealed class FolderWatcherService : IDisposable
             confidence = isDirectPak ? "Estimated" : "Confirmed";
         }
 
-        var nexusModId = nexusEntry?.ModId
+        var nexusModId = nexusEntry?.NexusModId
             ?? (zipHint == "Nexus" && zipModId > 0 ? zipModId : (int?)null);
 
         var nexusPageUrl = nexusModId.HasValue
@@ -443,7 +443,7 @@ public sealed class FolderWatcherService : IDisposable
             NexusPageUrl:  nexusPageUrl,
             PublishHandle: handle,
             ArchivePath:   archivePath,
-            ModVersion:    mod?.Version ?? "");
+            ModVersion:    mod?.MetaVersion ?? "");
     }
 
     /// <summary>
@@ -481,11 +481,11 @@ public sealed class FolderWatcherService : IDisposable
 
             return new InstalledMod
             {
-                UUID          = XAttr("UUID"),
-                Name          = XAttr("Name"),
-                Author        = XAttr("Author"),
-                PublishHandle = XULong("PublishHandle"),
-                Version       = BuildVersion(moduleInfo),
+                MetaUuid          = XAttr("UUID"),
+                MetaModuleName    = XAttr("Name"),
+                MetaAuthor        = XAttr("Author"),
+                ModioPublishHandle = XULong("PublishHandle"),
+                MetaVersion       = BuildVersion(moduleInfo),
             };
         }
         catch (Exception ex)
