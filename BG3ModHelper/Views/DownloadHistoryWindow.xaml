@@ -1,0 +1,232 @@
+﻿<Window x:Class="BG3ModHelper.Views.DownloadHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:BG3ModHelper.ViewModels"
+        Title="Download History"
+        Width="820" Height="500"
+        MinWidth="640" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip">
+
+    <Window.Resources>
+        <Style x:Key="ColHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ModNameButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter x:Name="cp"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center"
+                                          ToolTip="{TemplateBinding ToolTip}"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="cp" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="cp" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate DataType="{x:Type vm:DownloadHistoryEntryViewModel}">
+            <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>  <!-- date -->
+                        <ColumnDefinition Width="*"/>    <!-- mod name -->
+                        <ColumnDefinition Width="80"/>   <!-- from version -->
+                        <ColumnDefinition Width="20"/>   <!-- arrow -->
+                        <ColumnDefinition Width="80"/>   <!-- to version -->
+                        <ColumnDefinition Width="80"/>   <!-- source badge -->
+                        <ColumnDefinition Width="60"/>   <!-- status -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- date -->
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding DateDisplay}"
+                               FontSize="11" Foreground="#555555"
+                               VerticalAlignment="Center"/>
+
+                    <!-- mod name -->
+                    <Button Grid.Column="1"
+                            Command="{Binding OpenPageCommand}"
+                            IsEnabled="{Binding CanOpenPage}"
+                            Style="{StaticResource ModNameButton}"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock x:Name="tbPlatform"
+                                       Text="{Binding PlatformModName}"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding LocalModName}"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="FontSize" Value="11"/>
+                                        <Setter Property="Foreground" Value="#888888"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                <Setter Property="FontSize" Value="13"/>
+                                                <Setter Property="Foreground" Value="#222222"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- from version -->
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding FromVersion}"
+                               FontFamily="Consolas" FontSize="11"
+                               Foreground="#444444"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+
+                    <!-- arrow -->
+                    <TextBlock Grid.Column="3"
+                               Text="→"
+                               FontSize="11" Foreground="#888888"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+
+                    <!-- to version -->
+                    <TextBlock Grid.Column="4"
+                               Text="{Binding ToVersion}"
+                               FontFamily="Consolas" FontSize="11"
+                               Foreground="#444444"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Center"
+                               Margin="2,0,0,0"/>
+
+                    <!-- source badge -->
+                    <Border Grid.Column="5"
+                            MinWidth="46"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            CornerRadius="3" Padding="6,2">
+                        <Border.Background>
+                            <SolidColorBrush Color="{Binding SourceBadgeColor}"/>
+                        </Border.Background>
+                        <TextBlock Text="{Binding SourceDisplay}"
+                                   Foreground="White"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   TextAlignment="Center"/>
+                    </Border>
+
+                    <!-- status -->
+                    <TextBlock Grid.Column="6"
+                               Text="{Binding StatusMark}"
+                               Foreground="{Binding StatusColor}"
+                               FontSize="13" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- column header — right padding 25px (8 base + 17 scrollbar) -->
+        <Border Grid.Row="0"
+                BorderBrush="#e0e0e0" BorderThickness="1,1,1,0"
+                Background="#f8f8f8" Padding="8,6,25,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="60"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Date"    Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="1" Text="Name"    Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="2" Grid.ColumnSpan="3" Text="Version"
+                           Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="5" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="6" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- list -->
+        <Border Grid.Row="1" BorderBrush="#e0e0e0" BorderThickness="1,0,1,1">
+            <ScrollViewer VerticalScrollBarVisibility="Visible">
+                <ItemsControl ItemsSource="{Binding Entries}"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- footer -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,10,0,0">
+            <TextBlock VerticalAlignment="Center" Margin="0,0,12,0"
+                       Foreground="#888888" FontSize="11">
+                <Run Text="{Binding Entries.Count, Mode=OneWay}"/>
+                <Run Text="entries"/>
+            </TextBlock>
+
+            <!-- clear dropdown button -->
+            <Button x:Name="ClearBtn" Content="Clear ▾"
+                    Width="90" Height="28" Margin="0,0,8,0"
+                    Click="ClearBtn_Click">
+                <Button.ContextMenu>
+                    <ContextMenu DataContext="{Binding Path=PlacementTarget.DataContext,
+                                                       RelativeSource={RelativeSource Self}}"
+                                 MinWidth="0">
+                        <MenuItem Header="{Binding OldestDateDisplay}"
+                                  IsEnabled="False" IsHitTestVisible="False"
+                                  FontSize="11" Foreground="#888888"/>
+                        <Separator/>
+                        <MenuItem Header="Clear all"
+                                  Command="{Binding ClearAllCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="Clear older than 1 day"
+                                  Command="{Binding ClearExcept1DayCommand}"/>
+                        <MenuItem Header="Clear older than 1 week"
+                                  Command="{Binding ClearExcept1WeekCommand}"/>
+                        <MenuItem Header="Clear older than 1 month"
+                                  Command="{Binding ClearExcept1MonthCommand}"/>
+                        <MenuItem Header="Clear older than 1 year"
+                                  Command="{Binding ClearExcept1YearCommand}"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
+
+            <Button Content="Close" Width="90" Height="28"
+                    IsDefault="True" IsCancel="True"
+                    Command="{Binding CloseCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>

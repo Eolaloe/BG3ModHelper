@@ -1,0 +1,66 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+		<AssemblyName>BG3ModHelper</AssemblyName>
+		<RootNamespace>BG3ModHelper</RootNamespace>
+		<Product>BG3 Mod Helper</Product>
+		<Version>0.9.7</Version>
+		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
+		<PlatformTarget>x64</PlatformTarget>
+		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
+
+		<!-- Release / Publish settings -->
+		<PublishSingleFile>true</PublishSingleFile>
+		<SelfContained>false</SelfContained>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<PublishReadyToRun>true</PublishReadyToRun>
+
+		<!-- Accept .NET 9+ runtime if .NET 8 is missing -->
+		<RollForward>LatestMajor</RollForward>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Content Include="Assets\api_nexus.png"><CopyToOutputDirectory>Always</CopyToOutputDirectory></Content>
+		<Content Include="Assets\api_modio.png"><CopyToOutputDirectory>Always</CopyToOutputDirectory></Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Resource Include="Assets\mod_download_button.png"/>
+		<Resource Include="Assets\GitHub.png"/>
+		<Resource Include="Assets\eola.png"/>
+		<Resource Include="Assets\nexus.png"/>
+		<Resource Include="Assets\nexus_grey.png"/>
+		<Resource Include="Assets\modio.png"/>
+		<Resource Include="Assets\bg3mm.ico"/>
+		<Resource Include="Assets\bg3.png"/>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="SharpCompress" Version="0.48.1" />
+	</ItemGroup>
+
+	<!--
+	  LSLib compile-time reference only.
+	  Private="false" ensures the dll is NOT copied to the build output folder.
+	  At runtime, LibraryLoader loads it from the user's BG3MM _Lib folder.
+
+	  The Lib\ folder here is for the developer's machine only (so the compiler
+	  can resolve LSLib types). Copy LSLib.dll from your BG3MM installation's
+	  _Lib folder into this project's Lib\ folder.
+	  Do NOT include Lib\ contents when distributing the app.
+	-->
+	<ItemGroup>
+		<Reference Include="LSLib">
+			<HintPath>Lib\LSLib.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+	</ItemGroup>
+
+</Project>
