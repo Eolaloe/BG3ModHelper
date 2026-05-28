@@ -43,63 +43,73 @@
         </Style>
 
         <DataTemplate DataType="{x:Type vm:DownloadHistoryEntryViewModel}">
-            <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="130"/>  <!-- date -->
-                        <ColumnDefinition Width="*"/>    <!-- mod name -->
-                        <ColumnDefinition Width="80"/>   <!-- from version -->
-                        <ColumnDefinition Width="20"/>   <!-- arrow -->
-                        <ColumnDefinition Width="80"/>   <!-- to version -->
-                        <ColumnDefinition Width="80"/>   <!-- source badge -->
-                        <ColumnDefinition Width="60"/>   <!-- status -->
-                    </Grid.ColumnDefinitions>
+            <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6,8,4">
+                <StackPanel>
+                    <!-- main row -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>  <!-- date -->
+                            <ColumnDefinition Width="*"/>    <!-- mod name -->
+                            <ColumnDefinition Width="80"/>   <!-- from version -->
+                            <ColumnDefinition Width="20"/>   <!-- arrow -->
+                            <ColumnDefinition Width="80"/>   <!-- to version -->
+                            <ColumnDefinition Width="80"/>   <!-- source badge -->
+                            <ColumnDefinition Width="60"/>   <!-- status -->
+                        </Grid.ColumnDefinitions>
 
-                    <!-- date -->
-                    <TextBlock Grid.Column="0"
-                               Text="{Binding DateDisplay}"
-                               FontSize="11" Foreground="#555555"
-                               VerticalAlignment="Center"/>
+                        <!-- date -->
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding DateDisplay}"
+                                   FontSize="11" Foreground="#555555"
+                                   VerticalAlignment="Center"/>
 
-                    <!-- mod name -->
-                    <Button Grid.Column="1"
-                            Command="{Binding OpenPageCommand}"
-                            IsEnabled="{Binding CanOpenPage}"
-                            Style="{StaticResource ModNameButton}"
-                            Margin="0,0,8,0"
-                            VerticalAlignment="Center">
-                        <StackPanel>
-                            <TextBlock x:Name="tbPlatform"
-                                       Text="{Binding PlatformModName}"
-                                       FontSize="13" FontWeight="SemiBold"
-                                       TextTrimming="CharacterEllipsis">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="{Binding LocalModName}"
-                                       TextTrimming="CharacterEllipsis">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="FontSize" Value="11"/>
-                                        <Setter Property="Foreground" Value="#888888"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
-                                                <Setter Property="FontSize" Value="13"/>
-                                                <Setter Property="Foreground" Value="#222222"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Button>
+                        <!-- mod name + expand button -->
+                        <DockPanel Grid.Column="1" LastChildFill="True" Margin="0,0,8,0">
+                            <Button DockPanel.Dock="Left"
+                                    Content="{Binding ExpandIcon}"
+                                    Command="{Binding ToggleExpandCommand}"
+                                    Visibility="{Binding HasGroupChildren, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="0,0,4,0" Margin="0,0,2,0"
+                                    FontSize="9" Cursor="Hand" Focusable="False"
+                                    VerticalAlignment="Center"/>
+                            <Button Command="{Binding OpenPageCommand}"
+                                    IsEnabled="{Binding CanOpenPage}"
+                                    Style="{StaticResource ModNameButton}"
+                                    VerticalAlignment="Center">
+                                <StackPanel>
+                                    <TextBlock x:Name="tbPlatform"
+                                               Text="{Binding PlatformModName}"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding LocalModName}"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="FontSize" Value="11"/>
+                                                <Setter Property="Foreground" Value="#888888"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasPlatformName}" Value="False">
+                                                        <Setter Property="FontSize" Value="13"/>
+                                                        <Setter Property="Foreground" Value="#222222"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
+                        </DockPanel>
 
                     <!-- from version -->
                     <TextBlock Grid.Column="2"
@@ -129,24 +139,78 @@
                     <Border Grid.Column="5"
                             MinWidth="46"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Background="{Binding SourceBadgeColor}"
                             CornerRadius="3" Padding="6,2">
-                        <Border.Background>
-                            <SolidColorBrush Color="{Binding SourceBadgeColor}"/>
-                        </Border.Background>
                         <TextBlock Text="{Binding SourceDisplay}"
                                    Foreground="White"
                                    FontSize="10" FontWeight="SemiBold"
                                    TextAlignment="Center"/>
                     </Border>
 
-                    <!-- status -->
-                    <TextBlock Grid.Column="6"
-                               Text="{Binding StatusMark}"
-                               Foreground="{Binding StatusColor}"
-                               FontSize="13" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
-                </Grid>
+                        <!-- status -->
+                        <TextBlock Grid.Column="6"
+                                   Text="{Binding StatusMark}"
+                                   Foreground="{Binding StatusColor}"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   ToolTipService.InitialShowDelay="200"
+                                   ToolTipService.Placement="Mouse"
+                                   Cursor="Help">
+                            <TextBlock.ToolTip>
+                                <ToolTip Content="{Binding RenameTooltip}"
+                                         Visibility="{Binding WasRenamed, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </TextBlock.ToolTip>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- group children panel -->
+                    <ItemsControl ItemsSource="{Binding GroupChildren}"
+                                  Margin="152,3,0,0"
+                                  Visibility="{Binding IsGroupExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="20"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="60"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding LocalModName}"
+                                               FontSize="11" Foreground="#666666"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding FromVersion}"
+                                               FontFamily="Consolas" FontSize="11"
+                                               Foreground="#888888"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="→" FontSize="11" Foreground="#aaaaaa"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3"
+                                               Text="{Binding ToVersion}"
+                                               FontFamily="Consolas" FontSize="11"
+                                               Foreground="#888888"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Margin="2,0,0,0"/>
+                                    <TextBlock Grid.Column="4"
+                                               Text="{Binding StatusMark}"
+                                               Foreground="{Binding StatusColor}"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </Border>
         </DataTemplate>
     </Window.Resources>

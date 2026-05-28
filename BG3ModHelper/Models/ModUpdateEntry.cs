@@ -26,8 +26,10 @@ public class ModUpdateEntry
     public string ModioProfileUrl { get; set; } = "";
     public string PakFilePath     { get; set; } = "";
 
-    public bool   CanAutoDownload { get; set; }
-    public string Changelog       { get; set; } = "";
+    public bool   CanAutoDownload     { get; set; }
+    public bool   RequiresManualCheck { get; set; }
+    public string Changelog        { get; set; } = "";  // Nexus changelog
+    public string ModioChangelog   { get; set; } = "";  // mod.io changelog
 
     public UpdateStatus Status { get; set; } = UpdateStatus.Pending;
 }

@@ -26,18 +26,29 @@ public static class UpdateChecker
         bool                nexusIsPremium,
         IProgress<int>?     progress = null)
     {
-        // === mod.io: refresh cache via API (batch, unchanged) ===
+        // === Nexus + mod.io: run pre-fetch in parallel ===
+        // updated.json (1 call) and mod.io cache refresh are independent — run concurrently.
         var modioCache = ModioApi.LoadCache();
-
-        var modioMods = installedMods
+        var modioMods  = installedMods
             .Where(m => m.ModioPublishHandle != 0 && modioApi?.CanMakeRequest() == true)
             .ToList();
 
+        var recentlyUpdatedTask = nexusApi != null && nexusDb != null
+            ? nexusApi.GetRecentlyUpdatedModIdsAsync()
+            : Task.FromResult(new HashSet<int>());
+
+        var modioTask = modioApi != null && modioMods.Count > 0
+            ? RefreshModioCache(modioMods, modioApi, modioCache)
+            : Task.CompletedTask;
+
+        Logger.Info("UpdateChecker: fetching Nexus recently-updated list and mod.io cache in parallel...");
+        await Task.WhenAll(recentlyUpdatedTask, modioTask);
+
+        var recentlyUpdated = recentlyUpdatedTask.Result;
+        Logger.Info($"UpdateChecker: {recentlyUpdated.Count} mod(s) updated in the last month (Nexus)");
+
         if (modioApi != null && modioMods.Count > 0)
-        {
-            await RefreshModioCache(modioMods, modioApi, modioCache);
             ModioApi.SaveCache(modioCache);
-        }
 
         // === Build update entries ===
         var entries      = new Dictionary<string, ModUpdateEntry>();
@@ -59,7 +70,9 @@ public static class UpdateChecker
                     entry.ModioFileVersion  = modioData.ModioFileVersion;
                     entry.ModioProfileUrl   = modioData.ModioProfileUrl;
                     entry.AvailableSources.Add(UpdateSource.MODIO);
-                    entry.Changelog         = "";
+                    entry.Changelog      = "";
+                    if (!string.IsNullOrEmpty(modioData.ModioChangelog))
+                        entry.ModioChangelog = modioData.ModioChangelog;
                     if (!string.IsNullOrEmpty(modioData.ModioModName))
                         entry.ModioModName = modioData.ModioModName;
                 }
@@ -121,6 +134,45 @@ public static class UpdateChecker
                     if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
                         contributions.Add(new ContributeEntry(
                             dbEntry.PakFileName, mod.MetaUuid, dbEntry.NexusModId, dbEntry.NexusFileId));
+                }
+                else
+                {
+                    // API fallback: no DB entry but modId known and in recentlyUpdated
+                    var knownModId = mod.NexusModId
+                        ?? fileIdStore?.GetEntry(mod.MetaUuid)?.NexusModId;
+
+                    if (nexusApi != null && knownModId.HasValue &&
+                        recentlyUpdated.Count > 0 && recentlyUpdated.Contains(knownModId.Value))
+                    {
+                        Logger.Debug($"Nexus [{mod.MetaModuleName}] no DB entry but in recently-updated — calling GetLatestFileAsync + GetModNameAsync");
+                        var latestFileTask = nexusApi.GetLatestFileAsync(knownModId.Value);
+                        var modNameTask    = nexusApi.GetModNameAsync(knownModId.Value);
+                        await Task.WhenAll(latestFileTask, modNameTask);
+                        var latestFile = latestFileTask.Result;
+                        if (latestFile != null)
+                        {
+                            var localFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                            bool hasUpdate = localFileId.HasValue
+                                ? localFileId.Value != latestFile.NexusFileId
+                                : IsNewer(latestFile.NexusFileVersion, mod.MetaVersion);
+
+                            if (hasUpdate)
+                            {
+                                entry = EnsureEntry(entries, mod);
+                                entry.NexusFileVersion    = latestFile.NexusFileVersion;
+                                entry.NexusFileId         = latestFile.NexusFileId;
+                                entry.RequiresManualCheck = true;
+                                if (string.IsNullOrEmpty(entry.UpdateNewVersion) ||
+                                    IsNewer(latestFile.NexusFileVersion, entry.UpdateNewVersion))
+                                    entry.UpdateNewVersion = latestFile.NexusFileVersion;
+                                entry.NexusModPageUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{knownModId.Value}";
+                                entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                                var modName = modNameTask.Result;
+                                if (!string.IsNullOrEmpty(modName))
+                                    entry.NexusModName = modName;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -200,9 +252,14 @@ public static class UpdateChecker
         var c = Normalize(candidate);
         var v = Normalize(current);
 
-        if (Version.TryParse(c, out var cv) && Version.TryParse(v, out var vv))
-            return cv > vv;
+        var cOk = Version.TryParse(c, out var cv);
+        var vOk = Version.TryParse(v, out var vv);
 
+        if (cOk && vOk)  return cv > vv;
+        if (cOk && !vOk) return true;   // candidate is a proper version, current isn't
+        if (!cOk && vOk) return false;  // "1" vs "1.0.0.1" — candidate not parseable, can't be newer
+
+        // both unparseable: fall back to string compare
         return !string.Equals(c, v, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -238,24 +295,25 @@ public static class UpdateChecker
         if (entry.PreferredSource.HasValue)
         {
             entry.DefaultSource   = entry.PreferredSource.Value;
-            entry.CanAutoDownload = entry.DefaultSource == UpdateSource.MODIO ||
-                                    (entry.DefaultSource == UpdateSource.NEXUSMODS && nexusIsPremium);
+            entry.CanAutoDownload = !entry.RequiresManualCheck &&
+                                    (entry.DefaultSource == UpdateSource.MODIO ||
+                                     (entry.DefaultSource == UpdateSource.NEXUSMODS && nexusIsPremium));
             return;
         }
 
-        if (hasMod)
+        if (hasMod && !entry.RequiresManualCheck)
         {
             entry.DefaultSource   = UpdateSource.MODIO;
             entry.CanAutoDownload = true;
         }
-        else if (hasNex && nexusIsPremium)
+        else if (hasNex && nexusIsPremium && !entry.RequiresManualCheck)
         {
             entry.DefaultSource   = UpdateSource.NEXUSMODS;
             entry.CanAutoDownload = true;
         }
         else
         {
-            entry.DefaultSource   = UpdateSource.NEXUSMODS;
+            entry.DefaultSource   = hasNex ? UpdateSource.NEXUSMODS : UpdateSource.MODIO;
             entry.CanAutoDownload = false;
         }
     }

@@ -13,6 +13,9 @@ public class ModioModData
 
     /// <summary>Latest modfile ID — passed to GetLatestFileAsync for the download URL.</summary>
     public long ModioFileId { get; set; }
+
+    /// <summary>Changelog from the latest modfile. HTML tags stripped.</summary>
+    public string ModioChangelog { get; set; } = "";
 }
 
 /// <summary>A single modfile entry containing the download URL.</summary>

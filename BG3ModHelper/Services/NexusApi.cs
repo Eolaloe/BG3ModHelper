@@ -146,17 +146,33 @@ public class NexusApi(string apiKey)
 
             // file-metadata requires no authentication
             var metaResponse = await _http.GetStringAsync(previewUrl);
-            if (JObject.Parse(metaResponse)["children"] is not JArray children) return [];
+            var root = JObject.Parse(metaResponse);
+            if (root["children"] is not JArray rootChildren) return [];
 
-            return [.. children
-                .Where(c => c["name"]?.Value<string>()
-                    ?.EndsWith(".pak", StringComparison.OrdinalIgnoreCase) == true)
-                .Select(c => c["name"]!.Value<string>()!)];
+            return [.. CollectPakNames(rootChildren)];
         }
         catch (Exception ex)
         {
             Logger.Warn($"NexusApi.GetPakNamesAsync({modId}): {ex.Message}");
             return [];
+        }
+    }
+
+    /// Recursively collects .pak filenames from nested content_preview_link children.
+    private static IEnumerable<string> CollectPakNames(JArray children)
+    {
+        foreach (var node in children)
+        {
+            var name = node["name"]?.Value<string>() ?? "";
+            if (name.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return name;
+            }
+            else if (node["children"] is JArray nested)
+            {
+                foreach (var pak in CollectPakNames(nested))
+                    yield return pak;
+            }
         }
     }
 
@@ -214,6 +230,140 @@ public class NexusApi(string apiKey)
         {
             Logger.Warn($"NexusApi.GetFileMetaAsync({modId},{fileId}) parse error: {ex.Message}");
             return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Returns the changelog text for a specific version of a mod.
+    /// Looks up the exact version first; falls back to the latest entry if not found.
+    /// Returns null if no changelogs exist or the request fails.
+    /// </summary>
+    public async Task<string?> GetChangelogAsync(int modId, string targetVersion)
+    {
+        var json = await GetAsync(
+            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/changelogs.json");
+        if (json == null) return null;
+
+        try
+        {
+            var obj = JObject.Parse(json);
+            if (!obj.Properties().Any()) return null;
+
+            var target = targetVersion.TrimStart('v', 'V').Trim();
+
+            // Try exact version match first
+            foreach (var prop in obj.Properties())
+            {
+                if (string.Equals(prop.Name.TrimStart('v', 'V').Trim(), target,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return FormatChangelog(prop.Name, prop.Value as JArray);
+                }
+            }
+
+            // Fall back to latest version entry
+            var latest = obj.Properties().Last();
+            return FormatChangelog(latest.Name, latest.Value as JArray);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.GetChangelogAsync({modId}) parse error: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string? FormatChangelog(string version, JArray? items)
+    {
+        if (items == null || items.Count == 0) return null;
+        var lines = items.Select(i => "• " + StripHtml(i.Value<string>() ?? "")).ToList();
+        return $"v{version.TrimStart('v', 'V')}:\n" + string.Join("\n", lines);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _htmlTagRegex =
+        new(@"<[^>]+>", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string StripHtml(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return html;
+        var text = _htmlTagRegex.Replace(html, "");
+        return System.Net.WebUtility.HtmlDecode(text).Trim();
+    }
+
+    /// <summary>
+    /// Returns the display name of a mod.
+    /// Used when the local DB has no entry for a mod but the modId is known.
+    /// Returns null on failure.
+    /// </summary>
+    public async Task<string?> GetModNameAsync(int modId)
+    {
+        var json = await GetAsync($"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}.json");
+        if (json == null) return null;
+        try { return JObject.Parse(json)["name"]?.Value<string>(); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.GetModNameAsync({modId}) parse error: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Returns the set of Nexus mod IDs updated within the last month for BG3.
+    /// Single API call — use as a pre-filter before per-mod DB/API checks.
+    /// Returns empty set on failure so callers fall back to DB-only logic.
+    /// </summary>
+    public async Task<HashSet<int>> GetRecentlyUpdatedModIdsAsync()
+    {
+        var json = await GetAsync(
+            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/updated.json?period=1m");
+        if (json == null) return [];
+
+        try
+        {
+            var arr = JArray.Parse(json);
+            return arr
+                .Select(e => e["mod_id"]?.Value<int>() ?? 0)
+                .Where(id => id > 0)
+                .ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.GetRecentlyUpdatedModIdsAsync parse error: {ex.Message}");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Searches for a mod by the MD5 hash of its archive file.
+    /// Returns null on 404 (hash not found) or any other failure.
+    /// </summary>
+    public async Task<NexusMd5Result?> Md5SearchAsync(string md5)
+    {
+        var json = await GetAsync(
+            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/md5_search/{md5}.json");
+        if (json == null) return null;
+
+        try
+        {
+            var arr   = JArray.Parse(json);
+            var first = arr.FirstOrDefault();
+            if (first == null) return null;
+
+            var mod  = first["mod"];
+            var file = first["file_details"];
+            if (mod == null || file == null) return null;
+
+            return new NexusMd5Result(
+                ModId:       mod["mod_id"]?.Value<int>()    ?? 0,
+                ModName:     mod["name"]?.Value<string>()   ?? "",
+                FileId:      file["file_id"]?.Value<long>() ?? 0,
+                FileName:    file["file_name"]?.Value<string>() ?? "",
+                FileVersion: file["version"]?.Value<string>()   ?? ""
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.Md5SearchAsync parse error: {ex.Message}");
+            return null;
         }
     }
 

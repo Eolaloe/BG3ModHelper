@@ -15,7 +15,7 @@ public class DownloadHistoryViewModel : ViewModelBase
     {
         _store = store;
         Entries = new ObservableCollection<DownloadHistoryEntryViewModel>(
-            store.GetAll().Select(e => new DownloadHistoryEntryViewModel(e)));
+            GroupEntries(store.GetAll().Select(e => new DownloadHistoryEntryViewModel(e)).ToList()));
 
         CloseCommand              = new RelayCommand(() => CloseRequested?.Invoke());
         ClearAllCommand           = new RelayCommand(() => ExecuteClear(null));
@@ -47,6 +47,29 @@ public class DownloadHistoryViewModel : ViewModelBase
 
     public event Action? CloseRequested;
 
+    private static IEnumerable<DownloadHistoryEntryViewModel> GroupEntries(
+        IReadOnlyList<DownloadHistoryEntryViewModel> vms)
+    {
+        var children = new HashSet<DownloadHistoryEntryViewModel>();
+
+        var groups = vms
+            .Where(vm => vm.GroupId != null)
+            .GroupBy(vm => vm.GroupId!)
+            .Where(g => g.Count() > 1);
+
+        foreach (var g in groups)
+        {
+            var header = g.First();
+            foreach (var child in g.Skip(1))
+            {
+                header.AddGroupChild(child);
+                children.Add(child);
+            }
+        }
+
+        return vms.Where(vm => !children.Contains(vm));
+    }
+
     private void ExecuteClear(int? keepDays)
     {
         var label = keepDays switch
@@ -72,21 +95,49 @@ public class DownloadHistoryViewModel : ViewModelBase
             _store.ClearBefore(DateTime.UtcNow.AddDays(-keepDays.Value));
 
         Entries.Clear();
-        foreach (var e in _store.GetAll())
-            Entries.Add(new DownloadHistoryEntryViewModel(e));
+        foreach (var e in GroupEntries(_store.GetAll().Select(e => new DownloadHistoryEntryViewModel(e)).ToList()))
+            Entries.Add(e);
         OnPropertyChanged(nameof(OldestDateDisplay));
     }
 }
 
 /// <summary>Wraps a single DownloadHistoryEntry for display.</summary>
-public class DownloadHistoryEntryViewModel
+public class DownloadHistoryEntryViewModel : ViewModelBase
 {
     private readonly DownloadHistoryEntry _entry;
+    private readonly List<DownloadHistoryEntryViewModel> _groupChildren = [];
+    private bool _isGroupExpanded;
 
     public DownloadHistoryEntryViewModel(DownloadHistoryEntry entry)
     {
         _entry = entry;
-        OpenPageCommand = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(entry.HistoryPageUrl));
+        OpenPageCommand      = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(entry.HistoryPageUrl));
+        ToggleExpandCommand  = new RelayCommand(() => IsGroupExpanded = !IsGroupExpanded, () => HasGroupChildren);
+    }
+
+    // === Group support ===
+
+    public string? GroupId          => _entry.HistoryGroupId;
+    public IReadOnlyList<DownloadHistoryEntryViewModel> GroupChildren    => _groupChildren;
+    public bool                                         HasGroupChildren => _groupChildren.Count > 0;
+
+    public bool IsGroupExpanded
+    {
+        get => _isGroupExpanded;
+        set
+        {
+            SetField(ref _isGroupExpanded, value);
+            OnPropertyChanged(nameof(ExpandIcon));
+        }
+    }
+
+    public string ExpandIcon => _isGroupExpanded ? "▼" : "▶";
+
+    internal void AddGroupChild(DownloadHistoryEntryViewModel child)
+    {
+        _groupChildren.Add(child);
+        OnPropertyChanged(nameof(GroupChildren));
+        OnPropertyChanged(nameof(HasGroupChildren));
     }
 
     // === Display ===
@@ -112,21 +163,26 @@ public class DownloadHistoryEntryViewModel
     };
 
     /// <summary>Badge background color — matches UpdateEntryViewModel.SourceBadgeColor.</summary>
-    public System.Windows.Media.Color SourceBadgeColor => _entry.HistorySource switch
+    public string SourceBadgeColor => _entry.HistorySource switch
     {
-        "Nexus" => System.Windows.Media.Color.FromRgb(0xd9, 0x82, 0x00),
-        "ModIO" => System.Windows.Media.Color.FromRgb(0x1a, 0x7f, 0xd4),
-        _       => System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88)
+        "Nexus" => "#d98200",
+        "ModIO" => "#1a7fd4",
+        _       => "#888888"
     };
 
-    public string StatusMark  => _entry.HistorySuccess ? "✓" : "✗";
-    public string StatusColor => _entry.HistorySuccess ? "#4caf50" : "#f44336";
+    public bool   WasRenamed   => !string.IsNullOrEmpty(_entry.HistoryReplacedPakFileName);
+    public string StatusMark  => WasRenamed ? "↺" : (_entry.HistorySuccess ? "✓" : "✗");
+    public string StatusColor => WasRenamed ? "#ffc107" : (_entry.HistorySuccess ? "#4caf50" : "#f44336");
+    public string? RenameTooltip => WasRenamed
+        ? $"{_entry.HistoryReplacedPakFileName}\n→ {_entry.HistoryPakFileName ?? _entry.HistoryModName}"
+        : null;
 
     public bool CanOpenPage => !string.IsNullOrEmpty(_entry.HistoryPageUrl);
 
-    // === Command ===
+    // === Commands ===
 
-    public RelayCommand OpenPageCommand { get; }
+    public RelayCommand OpenPageCommand     { get; }
+    public RelayCommand ToggleExpandCommand { get; }
 
     private void OpenPage()
     {

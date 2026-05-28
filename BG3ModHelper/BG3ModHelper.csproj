@@ -9,13 +9,14 @@
 		<AssemblyName>BG3ModHelper</AssemblyName>
 		<RootNamespace>BG3ModHelper</RootNamespace>
 		<Product>BG3 Mod Helper</Product>
-		<Version>0.9.7</Version>
+		<Version>1.0.0</Version>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
 		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
 
 		<!-- Release / Publish settings -->
 		<PublishSingleFile>true</PublishSingleFile>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishReadyToRun>true</PublishReadyToRun>
@@ -25,8 +26,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="Assets\api_nexus.png"><CopyToOutputDirectory>Always</CopyToOutputDirectory></Content>
-		<Content Include="Assets\api_modio.png"><CopyToOutputDirectory>Always</CopyToOutputDirectory></Content>
+		<Resource Include="Assets\api_nexus.png"/>
+		<Resource Include="Assets\api_modio.png"/>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -38,6 +39,7 @@
 		<Resource Include="Assets\modio.png"/>
 		<Resource Include="Assets\bg3mm.ico"/>
 		<Resource Include="Assets\bg3.png"/>
+		<Resource Include="Assets\Discord.png"/>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -47,20 +49,41 @@
 	</ItemGroup>
 
 	<!--
-	  LSLib compile-time reference only.
-	  Private="false" ensures the dll is NOT copied to the build output folder.
-	  At runtime, LibraryLoader loads it from the user's BG3MM _Lib folder.
+	  LSLib bundled distribution.
+	  LSLib.dll (managed) + native dependencies are included in the build output
+	  and embedded into the single-file publish via IncludeNativeLibrariesForSelfExtract.
 
-	  The Lib\ folder here is for the developer's machine only (so the compiler
-	  can resolve LSLib types). Copy LSLib.dll from your BG3MM installation's
-	  _Lib folder into this project's Lib\ folder.
-	  Do NOT include Lib\ contents when distributing the app.
+	  Files in Lib\:
+	    LSLib.dll        — managed library (Norbyte, MIT license)
+	    LSLibNative.dll  — native C++ companion
+	    Ijwhost.dll      — C++/CLI interop host
+	    LZ4.dll          — LZ4 compression (pak format)
+	    LZ4pn.dll        — LZ4 portable native
+	    ZstdSharp.dll    — Zstandard compression (patch 7+ pak format)
 	-->
 	<ItemGroup>
 		<Reference Include="LSLib">
 			<HintPath>Lib\LSLib.dll</HintPath>
-			<Private>false</Private>
+			<Private>true</Private>
 		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="Lib\LSLibNative.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Lib\Ijwhost.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Lib\LZ4.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Lib\LZ4pn.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Lib\ZstdSharp.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 </Project>

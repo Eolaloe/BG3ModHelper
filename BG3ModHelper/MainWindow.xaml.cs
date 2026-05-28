@@ -80,7 +80,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    var info = await Task.Run(() => _vm.AnalyzeDroppedArchive(path));
+                    var info = await _vm.AnalyzeDroppedArchive(path);
                     if (info != null) infos.Add(info);
                 }
             }

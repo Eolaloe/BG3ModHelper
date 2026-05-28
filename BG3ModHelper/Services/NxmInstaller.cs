@@ -60,7 +60,7 @@ public static class NxmInstaller
 
         try
         {
-            var installedPath = await Downloader.DownloadAndInstallAsync(
+            var result = await Downloader.DownloadAndInstallAsync(
                 downloadUrl:     downloadUrl,
                 existingPakPath: "",
                 modsFolder:      modsFolder,
@@ -72,8 +72,11 @@ public static class NxmInstaller
                 fileIdStore:     null,
                 progress:        progress);
 
-            var pakFileName = Path.GetFileName(installedPath);
-            var pak         = ModScanner.InspectPak(installedPath);
+            var installedPaths = result.InstalledPaths;
+            // Primary pak (first) used for display and result
+            var primaryPath = result.PrimaryPath;
+            var pakFileName = Path.GetFileName(primaryPath);
+            var pak         = ModScanner.InspectPak(primaryPath);
             var modName     = (!string.IsNullOrEmpty(pak?.MetaModuleName)) ? pak!.MetaModuleName : pakFileName;
 
             // Nexus file version + name are more accurate than meta.lsx
@@ -81,11 +84,16 @@ public static class NxmInstaller
             var modVersion  = nexusVersion  ?? pak?.MetaVersion ?? "";
             var nexusFile   = nexusFileName ?? "";
 
-            Logger.Info($"NxmInstaller: installed {pakFileName} from nxm (version: {modVersion})");
+            Logger.Info($"NxmInstaller: installed {installedPaths.Count} pak(s) from nxm (version: {modVersion})");
 
-            await ContributeAsync(installedPath, pak, item.Url.NexusModId, item.Url.NexusFileId, nexusFile);
+            // Contribute all installed paks to the community DB
+            foreach (var path in installedPaths)
+            {
+                var inspected = path == primaryPath ? pak : ModScanner.InspectPak(path);
+                await ContributeAsync(path, inspected, item.Url.NexusModId, item.Url.NexusFileId, nexusFile);
+            }
 
-            return new NxmInstallResult(installedPath, pakFileName, modName, modVersion, item.Url.NexusModId, item.Url.NexusFileId);
+            return new NxmInstallResult(primaryPath, pakFileName, modName, modVersion, item.Url.NexusModId, item.Url.NexusFileId);
         }
         catch (Exception ex)
         {

@@ -83,18 +83,35 @@ public class ModioApi
             }
         }
 
+        var rawChangelog = modfile?["changelog"]?.Value<string>() ?? "";
+        var fileVersion  = modfile?["version"]?.Value<string>() ?? "";
+        var changelog    = StripHtml(rawChangelog);
+        if (!string.IsNullOrEmpty(changelog) && !string.IsNullOrEmpty(fileVersion))
+            changelog = $"v{fileVersion.TrimStart('v', 'V')}:\n{changelog}";
+
         return new ModioModData
         {
-            ModioModId      = id,
-            ModioModName    = mod["name"]?.Value<string>() ?? "",
-            ModioSummary    = mod["summary"]?.Value<string>() ?? "",
-            ModioProfileUrl = mod["profile_url"]?.Value<string>() ?? "",
-            ModioFileVersion = modfile?["version"]?.Value<string>() ?? "",
+            ModioModId       = id,
+            ModioModName     = mod["name"]?.Value<string>() ?? "",
+            ModioSummary     = mod["summary"]?.Value<string>() ?? "",
+            ModioProfileUrl  = mod["profile_url"]?.Value<string>() ?? "",
+            ModioFileVersion = fileVersion,
             ModioDateUpdated = DateTimeOffset
                 .FromUnixTimeSeconds(mod["date_updated"]?.Value<long>() ?? 0)
                 .UtcDateTime,
-            ModioFileId     = modfile?["id"]?.Value<long>() ?? 0
+            ModioFileId      = modfile?["id"]?.Value<long>() ?? 0,
+            ModioChangelog   = changelog,
         };
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _htmlTagRegex =
+        new(@"<[^>]+>", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string StripHtml(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+        var text = _htmlTagRegex.Replace(html, "");
+        return System.Net.WebUtility.HtmlDecode(text).Trim();
     }
 
     /// <summary>

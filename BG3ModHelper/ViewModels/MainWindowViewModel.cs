@@ -364,6 +364,18 @@ public class MainWindowViewModel : ViewModelBase
             AddActivity(updates.Count + " update(s) available");
             Logger.Info(updates.Count + " updates found");
 
+            // Fetch changelogs in parallel for all Nexus entries
+            if (nexusApi != null)
+            {
+                StatusText = "Fetching changelogs...";
+                var changelogTasks = updates
+                    .Where(u => u.NexusModId.HasValue &&
+                                u.AvailableSources.Contains(UpdateSource.NEXUSMODS))
+                    .Select(u => nexusApi.GetChangelogAsync(u.NexusModId!.Value, u.NexusFileVersion)
+                        .ContinueWith(t => { if (t.Result != null) u.Changelog = t.Result; }));
+                await Task.WhenAll(changelogTasks);
+            }
+
             // Phase 6: open update notification window
             var breakdown = new List<string>();
             var modioCount = updates.Count(u => u.AvailableSources.Contains(UpdateSource.MODIO));
@@ -541,13 +553,13 @@ public class MainWindowViewModel : ViewModelBase
     // === Folder Watcher ===
 
     /// <summary>Called from drag-and-drop — reuses FolderWatcherService.</summary>
-    public ArchiveSourceInfo? AnalyzeDroppedArchive(string archivePath)
+    public async Task<ArchiveSourceInfo?> AnalyzeDroppedArchive(string archivePath)
     {
         if (_folderWatcher != null)
-            return _folderWatcher.AnalyzeArchive(archivePath);
+            return await _folderWatcher.AnalyzeArchive(archivePath);
 
-        using var temp = new FolderWatcherService(_nexusIdDb, _ => Task.CompletedTask);
-        return temp.AnalyzeArchive(archivePath);
+        using var temp = new FolderWatcherService(_nexusIdDb, _ => Task.CompletedTask, _settings.NexusAPIKey);
+        return await temp.AnalyzeArchive(archivePath);
     }
 
     /// <summary>Analyzes a .pak file directly for drag-and-drop install.</summary>
@@ -663,7 +675,7 @@ public class MainWindowViewModel : ViewModelBase
             ? _settings.WatchedDownloadFolder
             : FolderWatcherService.GetDefaultDownloadsFolder();
 
-        _folderWatcher = new FolderWatcherService(_nexusIdDb, OnArchiveDetected);
+        _folderWatcher = new FolderWatcherService(_nexusIdDb, OnArchiveDetected, _settings.NexusAPIKey);
         _folderWatcher.Start(folder);
         Logger.Info($"FolderWatcher started: {folder}");
     }
@@ -738,21 +750,30 @@ public class MainWindowViewModel : ViewModelBase
             }
             else
             {
-                await Downloader.InstallLocalArchiveAsync(
+                var installResult = await Downloader.InstallLocalArchiveAsync(
                     info.ArchivePath, modsFolder, _settings.BackupBeforeUpdate, progress);
-            }
+                var primaryDest   = installResult.PrimaryPath;
+                var replacedName  = installResult.GetReplacedName(primaryDest);
 
-            _historyStore.Add(new Models.DownloadHistoryEntry
-            {
-                HistoryDownloadedAt    = DateTime.UtcNow,
-                HistoryModName         = info.ModName,
-                HistoryPlatformModName = platformModName,
-                HistoryFromVersion     = fromVersion,
-                HistoryToVersion       = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
-                HistorySource          = finalSource,
-                HistoryPageUrl         = pageUrl,
-                HistorySuccess         = true,
-            });
+                // Save Nexus fileId so future update checks use accurate fileId comparison
+                if (info.NexusFileId > 0 && !string.IsNullOrEmpty(info.MetaUuid))
+                    _fileIdStore.SetFileId(info.MetaUuid, info.NexusModId ?? 0,
+                                           info.NexusFileId, info.NexusFileName);
+
+                _historyStore.Add(new Models.DownloadHistoryEntry
+                {
+                    HistoryDownloadedAt        = DateTime.UtcNow,
+                    HistoryModName             = info.ModName,
+                    HistoryPlatformModName     = platformModName,
+                    HistoryFromVersion         = fromVersion,
+                    HistoryToVersion           = !string.IsNullOrEmpty(info.ModVersion) ? info.ModVersion : "—",
+                    HistorySource              = finalSource,
+                    HistoryPageUrl             = pageUrl,
+                    HistorySuccess             = true,
+                    HistoryPakFileName         = string.IsNullOrEmpty(primaryDest) ? null : System.IO.Path.GetFileName(primaryDest),
+                    HistoryReplacedPakFileName = replacedName,
+                });
+            }
 
             AddActivity($"Installed: {info.ModName}");
             Logger.Info($"Local install complete: {info.ModName}");

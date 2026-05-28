@@ -29,7 +29,7 @@ public static class Constants
     public const string BG3_MODS_FOLDER_RELATIVE = @"Larian Studios\Baldur's Gate 3\Mods";
 
     // Release name — shown in About (update alongside <Version> in .csproj)
-    public const string RELEASE_NAME = "Update Helper — Initial Release";
+    public const string RELEASE_NAME = "Mod Update Helper Edition";
 
     // Helper data folder — %LOCALAPPDATA%\BG3ModHelper
     public const string APP_DATA_FOLDER   = "BG3ModHelper";

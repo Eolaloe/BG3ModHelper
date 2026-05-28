@@ -38,19 +38,30 @@ public class UpdateNotificationViewModel : ViewModelBase
         _historyStore   = historyStore;
         _reloadFunc     = reloadFunc;
 
-        Entries = new ObservableCollection<UpdateEntryViewModel>(
-            updates.Select(u =>
-            {
-                var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore, historyStore);
-                vm.DownloadRequested += OnDownloadRequested;
-                vm.PageOpenRequested += OnPageOpenRequested;
-                vm.NexusRegistered   += OnNexusRegistered;
-                return vm;
-            }));
+        var allVms = updates.Select(u =>
+        {
+            var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore, historyStore);
+            vm.DownloadRequested += OnDownloadRequested;
+            vm.PageOpenRequested += OnPageOpenRequested;
+            vm.NexusRegistered   += OnNexusRegistered;
+            vm.CancelRequested   += OnCancelRequested;
+            return vm;
+        }).ToList();
+
+        Entries = new ObservableCollection<UpdateEntryViewModel>(GroupEntries(allVms));
 
         EntriesView = CollectionViewSource.GetDefaultView(Entries);
-        SortByNameCommand   = new RelayCommand(() => ToggleSort(SortCol.Name));
-        SortBySourceCommand = new RelayCommand(() => ToggleSort(SortCol.Source));
+        // Live sorting: re-sort automatically when any sort-relevant property changes
+        if (EntriesView is System.ComponentModel.ICollectionViewLiveShaping liveView)
+        {
+            liveView.IsLiveSorting = true;
+            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortPreserveOrder));
+            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortName));
+            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortSourceOrder));
+        }
+        SortByNameCommand    = new RelayCommand(() => ToggleSort(SortCol.Name));
+        SortBySourceCommand  = new RelayCommand(() => ToggleSort(SortCol.Source));
+        SortByVersionCommand = new RelayCommand(() => ToggleSort(SortCol.Preserve));
         ApplySort();
 
         SelectAllCommand        = new RelayCommand(() => SetAllSelected(true));
@@ -157,17 +168,19 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Sort ===
 
-    private enum SortCol { Name, Source }
+    private enum SortCol { Name, Source, Preserve }
     private SortCol _sortColumn    = SortCol.Name;
     private bool    _sortAscending = true;
 
     public ICollectionView EntriesView { get; }
 
-    public string NameSortHeader   => _sortColumn == SortCol.Name   ? (_sortAscending ? "Name ▲" : "Name ▼") : "Name ⇅";
-    public string SourceSortHeader => _sortColumn == SortCol.Source ? (_sortAscending ? "Source ▲" : "Source ▼") : "Source ⇅";
+    public string NameSortHeader    => _sortColumn == SortCol.Name    ? (_sortAscending ? "Name ▲"    : "Name ▼")    : "Name ⇅";
+    public string SourceSortHeader  => _sortColumn == SortCol.Source  ? (_sortAscending ? "Source ▲"  : "Source ▼")  : "Source ⇅";
+    public string VersionSortHeader => _sortColumn == SortCol.Preserve ? (_sortAscending ? "Version ▲" : "Version ▼") : "Version ⇅";
 
-    public RelayCommand SortByNameCommand   { get; }
-    public RelayCommand SortBySourceCommand { get; }
+    public RelayCommand SortByNameCommand    { get; }
+    public RelayCommand SortBySourceCommand  { get; }
+    public RelayCommand SortByVersionCommand { get; }
 
     private void ToggleSort(SortCol col)
     {
@@ -176,20 +189,27 @@ public class UpdateNotificationViewModel : ViewModelBase
         ApplySort();
         OnPropertyChanged(nameof(NameSortHeader));
         OnPropertyChanged(nameof(SourceSortHeader));
+        OnPropertyChanged(nameof(VersionSortHeader));
     }
 
     private void ApplySort()
     {
         EntriesView.SortDescriptions.Clear();
         var dir = _sortAscending ? ListSortDirection.Ascending : ListSortDirection.Descending;
-        if (_sortColumn == SortCol.Name)
+        switch (_sortColumn)
         {
-            EntriesView.SortDescriptions.Add(new SortDescription("SortName", dir));
-        }
-        else
-        {
-            EntriesView.SortDescriptions.Add(new SortDescription("SortSourceOrder", dir));
-            EntriesView.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
+            case SortCol.Name:
+                EntriesView.SortDescriptions.Add(new SortDescription("SortName", dir));
+                break;
+            case SortCol.Source:
+                EntriesView.SortDescriptions.Add(new SortDescription("SortSourceOrder", dir));
+                EntriesView.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
+                break;
+            case SortCol.Preserve:
+                // Ascending = preserved (🔒) first, Descending = normal first
+                EntriesView.SortDescriptions.Add(new SortDescription("SortPreserveOrder", dir));
+                EntriesView.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
+                break;
         }
     }
 
@@ -201,6 +221,10 @@ public class UpdateNotificationViewModel : ViewModelBase
     private int                                _webViewProgress;
     // nxm mod ID → entry: tracks which entry corresponds to each nxm download
     private readonly Dictionary<int, UpdateEntryViewModel> _downloadingByNxmId = new();
+
+    // === Cancel tracking ===
+    // Items currently enqueued in the active batch (set during ExecuteDownloadSelected)
+    private List<UpdateEntryViewModel> _activeAutoItems = [];
 
     // === Refresh ===
 
@@ -222,17 +246,22 @@ public class UpdateNotificationViewModel : ViewModelBase
                 .ToList();
             foreach (var e in toRemove) Entries.Remove(e);
 
-            // Add new entries
+            // Add new entries (re-apply grouping for the full new set)
             var existing = Entries.Select(e => e.UUID).ToHashSet();
-            foreach (var u in newUpdates.Where(u => !existing.Contains(u.MetaUuid)))
-            {
-                var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
-                    _backupEnabled, _modioApi, _nexusApi, _fileIdStore, _historyStore);
-                vm.DownloadRequested += OnDownloadRequested;
-                vm.PageOpenRequested += OnPageOpenRequested;
-                vm.NexusRegistered   += OnNexusRegistered;
+            var newVms = newUpdates
+                .Where(u => !existing.Contains(u.MetaUuid))
+                .Select(u =>
+                {
+                    var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
+                        _backupEnabled, _modioApi, _nexusApi, _fileIdStore, _historyStore);
+                    vm.DownloadRequested += OnDownloadRequested;
+                    vm.PageOpenRequested += OnPageOpenRequested;
+                    vm.NexusRegistered   += OnNexusRegistered;
+                    vm.CancelRequested   += OnCancelRequested;
+                    return vm;
+                }).ToList();
+            foreach (var vm in GroupEntries(newVms))
                 Entries.Add(vm);
-            }
         }
         catch (Exception ex) { Logger.Error($"Refresh failed: {ex.Message}"); }
         finally
@@ -271,7 +300,8 @@ public class UpdateNotificationViewModel : ViewModelBase
             // Auto-download items (mod.io + Nexus Premium) — routed through UnifiedDownloadQueue
             if (autoItems.Count > 0)
             {
-                IsBusy = true;
+                IsBusy          = true;
+                _activeAutoItems = autoItems;
                 var total       = autoItems.Count;
                 var done        = 0;
                 var completions = autoItems.Select(_ => new TaskCompletionSource()).ToArray();
@@ -300,6 +330,7 @@ public class UpdateNotificationViewModel : ViewModelBase
                 }
 
                 await Task.WhenAll(completions.Select(t => t.Task));
+                _activeAutoItems = [];
                 IsBusy   = false;
                 BusyText = "";
                 UpdateSummary();
@@ -431,6 +462,37 @@ public class UpdateNotificationViewModel : ViewModelBase
         UnifiedDownloadQueue.Instance.OnNxmProgress  -= OnNxmProgress;
     }
 
+    private void OnCancelRequested(UpdateEntryViewModel entry)
+    {
+        // 1. Immediately cancel the active download
+        entry.CancelDownloadNow();
+
+        // 2. Find batch items that haven't started yet
+        var pendingItems = _activeAutoItems
+            .Where(e => e != entry && e.Status == UpdateStatus.Pending)
+            .ToList();
+
+        if (pendingItems.Count == 0) return;
+
+        // 3. Ask what to do with the remaining queue
+        //    Yes = 전체 취소 / No = 다음 항목 계속
+        var result = MessageBox.Show(
+            $"현재 다운로드가 취소되었습니다.\n\n대기 중인 {pendingItems.Count}개 항목도 전체 취소할까요?\n\n예(Yes) — 전체 취소\n아니오(No) — 다음 항목 계속",
+            "다운로드 취소",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            foreach (var item in pendingItems)
+            {
+                item.Status     = UpdateStatus.Skipped;
+                item.StatusText = "Cancelled";
+            }
+        }
+    }
+
     private async void OnDownloadRequested(UpdateEntryViewModel entry)
     {
         try
@@ -521,6 +583,64 @@ public class UpdateNotificationViewModel : ViewModelBase
         UpdateSummary();
         DownloadSelectedCommand.RaiseCanExecuteChanged();
         Logger.Info($"Nexus linked: UUID={entry.UUID}, modId={modId}");
+    }
+
+    /// <summary>
+    /// Groups VMs by (NexusModId, NexusFileId). Groups of 2+ get a header + children.
+    /// Returns only headers (children are attached to their header, not in the main list).
+    /// </summary>
+    private static IEnumerable<UpdateEntryViewModel> GroupEntries(IReadOnlyList<UpdateEntryViewModel> vms)
+    {
+        var children     = new HashSet<UpdateEntryViewModel>();
+        var bundleNoise  = new HashSet<UpdateEntryViewModel>();
+
+        var groups = vms
+            .Where(vm => vm.NexusModId.HasValue && vm.NexusModId.Value != 0 && vm.NexusFileId != 0)
+            .GroupBy(vm => (vm.NexusModId!.Value, vm.NexusFileId))
+            .Where(g => g.Count() > 1);
+
+        foreach (var g in groups)
+        {
+            if (IsCoherentPakGroup(g))
+            {
+                var header = g.First();
+                foreach (var child in g.Skip(1))
+                {
+                    header.AddGroupChild(child);
+                    children.Add(child);
+                }
+            }
+            else
+            {
+                // Bundle reupload noise: handle mods that have their own mod.io identity.
+                foreach (var vm in g.Where(vm => vm.ModioPublishHandle != 0))
+                {
+                    if (vm.HasModio)
+                        // mod.io update also found → keep entry, strip noisy Nexus source
+                        vm.StripNexusSource();
+                    else
+                        // Only Nexus-bundle source, no real update → discard entry entirely
+                        bundleNoise.Add(vm);
+                }
+            }
+        }
+
+        return vms.Where(vm => !children.Contains(vm) && !bundleNoise.Contains(vm));
+    }
+
+    /// <summary>
+    /// Rejects bundle repacks where unrelated mods are zipped together.
+    /// Legitimate multi-pak mods are consistent: either ALL paks have a mod.io handle
+    /// or NONE do. A mix (some have, some don't) almost always means an unauthorized
+    /// bundle reupload containing paks from different sources.
+    /// </summary>
+    private static bool IsCoherentPakGroup(IEnumerable<UpdateEntryViewModel> group)
+    {
+        var distinctHandlePresence = group
+            .Select(vm => vm.ModioPublishHandle != 0)
+            .Distinct()
+            .Count();
+        return distinctHandlePresence == 1;
     }
 
     private void UpdateSummary()

@@ -16,12 +16,14 @@ public partial class UpdateEntryViewModel : ViewModelBase
     private readonly ModFileIdStore? _fileIdStore;
     private readonly DownloadHistoryStore? _historyStore;
 
-    private bool         _isSelected;
-    private UpdateStatus _status;
-    private UpdateSource _activeSource;
-    private string       _nexusUrlInput    = "";
-    private bool         _isRegisterExpanded;
-    private string       _statusText       = "";
+    private bool                  _isSelected;
+    private UpdateStatus          _status;
+    private UpdateSource          _activeSource;
+    private string                _nexusUrlInput    = "";
+    private bool                  _isRegisterExpanded;
+    private string                _statusText       = "";
+    private DownloadInstallResult? _lastInstallResult;
+    private CancellationTokenSource? _downloadCts;
 
     public UpdateEntryViewModel(
         ModUpdateEntry entry,
@@ -47,11 +49,13 @@ public partial class UpdateEntryViewModel : ViewModelBase
                           (entry.AvailableSources.Contains(UpdateSource.NEXUSMODS) &&
                            entry.NexusModId != null);
 
-        PrimaryActionCommand = new RelayCommand(ExecutePrimaryAction, CanExecutePrimaryAction);
-        SwitchSourceCommand  = new RelayCommand<string>(SwitchSource);
-        ToggleSourceCommand  = new RelayCommand(ToggleSource, () => HasMultipleSources);
-        OpenPageCommand      = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(ActivePageUrl));
-        RegisterNexusCommand = new RelayCommand(RegisterNexus, () => !string.IsNullOrEmpty(_nexusUrlInput.Trim()));
+        PrimaryActionCommand  = new RelayCommand(ExecutePrimaryAction, CanExecutePrimaryAction);
+        SwitchSourceCommand   = new RelayCommand<string>(SwitchSource);
+        ToggleSourceCommand   = new RelayCommand(ToggleSource, () => HasMultipleSources);
+        ToggleExpandCommand   = new RelayCommand(() => IsGroupExpanded = !IsGroupExpanded, () => HasGroupChildren);
+        OpenPageCommand       = new RelayCommand(OpenPage, () => !string.IsNullOrEmpty(ActivePageUrl));
+        RegisterNexusCommand  = new RelayCommand(RegisterNexus, () => !string.IsNullOrEmpty(_nexusUrlInput.Trim()));
+        TogglePreserveCommand = new RelayCommand(TogglePreserve);
     }
 
     // === Identity ===
@@ -73,9 +77,87 @@ public partial class UpdateEntryViewModel : ViewModelBase
         IsNexusUnregistered                ? 3 :
         ActiveSource == UpdateSource.MODIO ? 0 :
         CanAutoDownload                    ? 1 : 2;
+    /// <summary>0 = preserved (locked), 1 = normal. Used for the Version column sort.</summary>
+    public int SortPreserveOrder => IsPreserved ? 0 : 1;
 
     public string CurrentVersion => _entry.UpdateCurrentVersion;
     public string NewVersion     => _entry.UpdateNewVersion;
+    public bool   RequiresManualCheck => _entry.RequiresManualCheck;
+    public long   NexusFileId          => _entry.NexusFileId;
+    public ulong  ModioPublishHandle   => _entry.ModioPublishHandle;
+    public string PakFilePath          => _entry.PakFilePath ?? "";
+
+    // === Group support ===
+    private readonly List<UpdateEntryViewModel> _groupChildren = [];
+
+    public IReadOnlyList<UpdateEntryViewModel> GroupChildren    => _groupChildren;
+    public bool                                HasGroupChildren => _groupChildren.Count > 0;
+
+    private bool _isGroupExpanded;
+    public bool IsGroupExpanded
+    {
+        get => _isGroupExpanded;
+        set
+        {
+            SetField(ref _isGroupExpanded, value);
+            OnPropertyChanged(nameof(ExpandIcon));
+        }
+    }
+
+    public string ExpandIcon => _isGroupExpanded ? "▼" : "▶";
+
+    internal void AddGroupChild(UpdateEntryViewModel child)
+    {
+        _groupChildren.Add(child);
+        OnPropertyChanged(nameof(GroupChildren));
+        OnPropertyChanged(nameof(HasGroupChildren));
+    }
+
+    /// <summary>
+    /// Removes Nexus as an available source. Called when a mod is detected inside
+    /// a bundle reupload (incoherent pak group) — the Nexus attribution is noise,
+    /// not the mod's own page.
+    /// </summary>
+    internal void StripNexusSource()
+    {
+        _entry.AvailableSources.Remove(UpdateSource.NEXUSMODS);
+        _entry.NexusModPageUrl  = "";
+        _entry.NexusFileVersion = "";
+        _entry.NexusModName     = "";
+        _entry.NexusFileId      = 0;
+        _entry.NexusModId       = null;
+
+        _entry.DefaultSource   = UpdateSource.MODIO;
+        _entry.CanAutoDownload = _entry.AvailableSources.Contains(UpdateSource.MODIO);
+
+        _activeSource = _entry.DefaultSource;
+
+        OnPropertyChanged(nameof(ActiveSource));
+        OnPropertyChanged(nameof(HasNexus));
+        OnPropertyChanged(nameof(HasModio));
+        OnPropertyChanged(nameof(HasMultipleSources));
+        OnPropertyChanged(nameof(ShowSwitchButtons));
+        OnPropertyChanged(nameof(CanSwitchToModio));
+        OnPropertyChanged(nameof(CanSwitchToNexus));
+        OnPropertyChanged(nameof(CanAutoDownload));
+        OnPropertyChanged(nameof(CanBeQueued));
+        OnPropertyChanged(nameof(IsNexusUnregistered));
+        OnPropertyChanged(nameof(SourceBadge));
+        OnPropertyChanged(nameof(SourceBadgeColor));
+        OnPropertyChanged(nameof(ActionLabel));
+        OnPropertyChanged(nameof(ActionStyle));
+        OnPropertyChanged(nameof(ActivePageUrl));
+        OnPropertyChanged(nameof(NexusModId));
+        OnPropertyChanged(nameof(SortSourceOrder));
+        OnPropertyChanged(nameof(PlatformModName));
+        OnPropertyChanged(nameof(HasPlatformName));
+        PrimaryActionCommand.RaiseCanExecuteChanged();
+    }
+
+    public string Changelog =>
+        _entry.RequiresManualCheck
+            ? "File mapping uncertain — please verify the correct file on the mod page."
+            : ActiveSource == UpdateSource.MODIO ? _entry.ModioChangelog : _entry.Changelog;
 
     public string VersionDisplay =>
         string.IsNullOrEmpty(NewVersion)
@@ -113,6 +195,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
             OnPropertyChanged(nameof(NewVersionDisplay));  // update version label on source switch
             OnPropertyChanged(nameof(PlatformModName));
             OnPropertyChanged(nameof(HasPlatformName));
+            OnPropertyChanged(nameof(Changelog));
             PrimaryActionCommand.RaiseCanExecuteChanged();
         }
     }
@@ -141,24 +224,69 @@ public partial class UpdateEntryViewModel : ViewModelBase
          (ActiveSource == UpdateSource.NEXUSMODS && _nexusIsPremium));
 
     // True for auto-download AND Nexus Free items (both can be queued via Download Selected)
-    public bool CanBeQueued => CanAutoDownload || (HasNexus && !IsNexusUnregistered);
+    public bool CanBeQueued => !IsPreserved && (CanAutoDownload || (HasNexus && !IsNexusUnregistered));
+
+    // === Preserve (version lock) ===
+
+    /// <summary>
+    /// Whether this mod is locked at its current version.
+    /// Preserved mods appear in the update list but are greyed out and excluded
+    /// from batch downloads.
+    /// </summary>
+    public bool IsPreserved => Services.PreservedModsStore.Instance.IsPreserved(UUID);
+
+    /// <summary>Lock icon color — amber when locked, light grey when unlocked.</summary>
+    public string PreserveLockColor => IsPreserved ? "#d98200" : "#d0d0d0";
+
+    public string PreserveLockTooltip => IsPreserved
+        ? "Unlock version"
+        : "Lock version  (ignore updates)";
+
+    public RelayCommand TogglePreserveCommand { get; }
+
+    private void TogglePreserve()
+    {
+        Services.PreservedModsStore.Instance.Toggle(UUID);
+        if (IsPreserved)
+            _isSelected = false;        // lock → deselect
+        else if (CanBeQueued)
+            _isSelected = true;         // unlock → re-select
+        OnPropertyChanged(nameof(IsPreserved));
+        OnPropertyChanged(nameof(IsSelected));
+        OnPropertyChanged(nameof(CanBeQueued));
+        OnPropertyChanged(nameof(IsActionEnabled));
+        OnPropertyChanged(nameof(IsActionButtonEnabled));
+        OnPropertyChanged(nameof(PreserveLockColor));
+        OnPropertyChanged(nameof(PreserveLockTooltip));
+        OnPropertyChanged(nameof(SortPreserveOrder));
+        PrimaryActionCommand.RaiseCanExecuteChanged();
+    }
+
+    private bool IsDownloadingOrApplying =>
+        Status == UpdateStatus.Downloading || Status == UpdateStatus.Applying;
 
     public string ActionLabel
     {
         get
         {
-            if (IsNexusUnregistered)                                      return "Link Nexus";
-            if (Status == UpdateStatus.Retry)                             return "Retry";
-            if (Status == UpdateStatus.Downloading ||
-                Status == UpdateStatus.Applying)                          return "...";
-            if (CanAutoDownload)                                          return "Download";
+            if (IsNexusUnregistered)   return "Link Nexus";
+            if (Status == UpdateStatus.Retry) return "Retry";
+            if (IsDownloadingOrApplying)      return "■ Stop";
+            if (CanAutoDownload)              return "Download";
             return "Open Page";
         }
     }
 
     public string ActionStyle =>
-        IsNexusUnregistered ? "RegisterActionButton" :
-        CanAutoDownload      ? "PrimaryActionButton"  : "SecondaryActionButton";
+        IsNexusUnregistered     ? "RegisterActionButton" :
+        IsDownloadingOrApplying ? "StopActionButton"     :
+        CanAutoDownload         ? "PrimaryActionButton"  : "SecondaryActionButton";
+
+    /// <summary>
+    /// Whether the action button row is clickable.
+    /// True for normal actionable states AND during download (for cancel).
+    /// </summary>
+    public bool IsActionButtonEnabled => IsActionEnabled || IsDownloadingOrApplying;
 
     public string ActivePageUrl =>
         ActiveSource == UpdateSource.MODIO ? _entry.ModioProfileUrl : _entry.NexusModPageUrl;
@@ -180,7 +308,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(StatusColor));
             OnPropertyChanged(nameof(ActionLabel));
+            OnPropertyChanged(nameof(ActionStyle));
             OnPropertyChanged(nameof(IsActionEnabled));
+            OnPropertyChanged(nameof(IsActionButtonEnabled));
             PrimaryActionCommand.RaiseCanExecuteChanged();
         }
     }
@@ -203,9 +333,11 @@ public partial class UpdateEntryViewModel : ViewModelBase
     };
 
     public bool IsActionEnabled =>
-        Status == UpdateStatus.Pending ||
-        Status == UpdateStatus.Failed  ||
-        Status == UpdateStatus.Retry;
+        !IsPreserved &&
+        (Status == UpdateStatus.Pending  ||
+         Status == UpdateStatus.Failed   ||
+         Status == UpdateStatus.Retry    ||
+         Status == UpdateStatus.Skipped); // Cancelled items can be re-downloaded
 
     // === Nexus link panel ===
     public bool ShowNexusRegisterPanel => IsNexusUnregistered && _isRegisterExpanded;
@@ -224,12 +356,14 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public RelayCommand         PrimaryActionCommand { get; }
     public RelayCommand<string> SwitchSourceCommand  { get; }
     public RelayCommand         ToggleSourceCommand  { get; }
+    public RelayCommand         ToggleExpandCommand  { get; }
     public RelayCommand         OpenPageCommand       { get; }
     public RelayCommand         RegisterNexusCommand  { get; }
 
     public event Action<UpdateEntryViewModel>?      DownloadRequested;
     public event Action<UpdateEntryViewModel>?      PageOpenRequested;
     public event Action<UpdateEntryViewModel, int>? NexusRegistered;
+    public event Action<UpdateEntryViewModel>?      CancelRequested;
 
     // === Download ===
 
@@ -238,6 +372,11 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public async Task ExecuteDownloadAsync(Action<DownloadProgress>? onProgress = null)
     {
         if (!CanAutoDownload || !IsActionEnabled) return;
+        // Prevent re-entry while already running
+        if (IsDownloadingOrApplying) return;
+
+        _downloadCts = new CancellationTokenSource();
+        var ct = _downloadCts.Token;
 
         Status     = UpdateStatus.Downloading;
         StatusText = "Downloading...";
@@ -268,17 +407,44 @@ public partial class UpdateEntryViewModel : ViewModelBase
                 onProgress?.Invoke(p);
             });
 
-            await Downloader.DownloadAndInstallAsync(
-                downloadUrl,
-                _entry.PakFilePath ?? "",
-                _modsFolder,
-                _backupEnabled,
-                uuid:        _entry.MetaUuid,
-                modId:       _entry.NexusModId ?? 0,
-                fileId:      nexusFileId,
-                fileName:    nexusFileName,
-                fileIdStore: ActiveSource == UpdateSource.NEXUSMODS ? _fileIdStore : null,
-                progress:    progress);
+            if (HasGroupChildren)
+            {
+                var targets = new List<PakInstallTarget>
+                {
+                    new(_entry.PakFilePath ?? "", _entry.MetaUuid, _entry.NexusModId ?? 0,
+                        nexusFileId, nexusFileName)
+                };
+                foreach (var child in _groupChildren)
+                    targets.Add(new(child._entry.PakFilePath ?? "", child._entry.MetaUuid,
+                        child._entry.NexusModId ?? 0, nexusFileId, nexusFileName));
+
+                await Downloader.DownloadAndInstallGroupAsync(
+                    downloadUrl, targets, _modsFolder, _backupEnabled,
+                    ActiveSource == UpdateSource.NEXUSMODS ? _fileIdStore : null,
+                    progress, ct);
+
+                foreach (var child in _groupChildren)
+                {
+                    child.Status     = UpdateStatus.Updated;
+                    child.StatusText = "Updated";
+                }
+            }
+            else
+            {
+                var result = await Downloader.DownloadAndInstallAsync(
+                    downloadUrl,
+                    _entry.PakFilePath ?? "",
+                    _modsFolder,
+                    _backupEnabled,
+                    uuid:        _entry.MetaUuid,
+                    modId:       _entry.NexusModId ?? 0,
+                    fileId:      nexusFileId,
+                    fileName:    nexusFileName,
+                    fileIdStore: ActiveSource == UpdateSource.NEXUSMODS ? _fileIdStore : null,
+                    progress:    progress,
+                    ct:          ct);
+                _lastInstallResult = result;
+            }
 
             Status     = UpdateStatus.Updated;
             StatusText = "Updated";
@@ -289,6 +455,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
         {
             Status     = UpdateStatus.Retry;
             StatusText = "Retry";
+            foreach (var child in _groupChildren) { child.Status = UpdateStatus.Retry; child.StatusText = "Retry"; }
             Logger.Warn($"File in use for {ModName}: {ex.Message}");
 
             _ = Application.Current.Dispatcher.InvokeAsync(() =>
@@ -302,11 +469,13 @@ public partial class UpdateEntryViewModel : ViewModelBase
         {
             Status     = UpdateStatus.Skipped;
             StatusText = "Cancelled";
+            Logger.Info($"Download cancelled: {ModName}");
         }
         catch (Exception ex)
         {
             Status     = UpdateStatus.Failed;
             StatusText = "Failed";
+            foreach (var child in _groupChildren) { child.Status = UpdateStatus.Failed; child.StatusText = "Failed"; }
             Logger.Error($"Download failed for {ModName}: {ex.Message}");
             RecordHistory(success: false);
 
@@ -317,7 +486,15 @@ public partial class UpdateEntryViewModel : ViewModelBase
                     MessageBoxButton.OK,
                     MessageBoxImage.Error));
         }
+        finally
+        {
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+        }
     }
+
+    /// <summary>Immediately cancels the active download (if any).</summary>
+    internal void CancelDownloadNow() => _downloadCts?.Cancel();
 
     private async Task<string> GetModioDownloadUrlAsync()
     {
@@ -363,6 +540,12 @@ public partial class UpdateEntryViewModel : ViewModelBase
             return;
         }
 
+        if (IsDownloadingOrApplying)
+        {
+            CancelRequested?.Invoke(this);
+            return;
+        }
+
         if (!CanAutoDownload)
         {
             PageOpenRequested?.Invoke(this);
@@ -373,10 +556,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
     }
 
     private bool CanExecutePrimaryAction() =>
-        IsNexusUnregistered ||
-        (IsActionEnabled &&
-         Status != UpdateStatus.Downloading &&
-         Status != UpdateStatus.Applying);
+        IsNexusUnregistered || IsActionEnabled || IsDownloadingOrApplying;
 
     private void ToggleSource()
     {
@@ -431,17 +611,40 @@ public partial class UpdateEntryViewModel : ViewModelBase
             _ => null
         };
 
+        var groupId = HasGroupChildren ? Guid.NewGuid().ToString("N") : null;
+        var now     = DateTime.UtcNow;
+
+        var primaryDest = _lastInstallResult?.PrimaryPath ?? "";
         _historyStore.Add(new DownloadHistoryEntry
         {
-            HistoryDownloadedAt    = DateTime.UtcNow,
-            HistoryModName         = ModName,
-            HistoryPlatformModName = PlatformModName,
-            HistoryFromVersion  = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
-            HistoryToVersion    = NewVersionDisplay,
-            HistorySource       = source,
-            HistoryPageUrl      = pageUrl,
-            HistorySuccess      = success,
+            HistoryDownloadedAt        = now,
+            HistoryModName             = ModName,
+            HistoryPlatformModName     = PlatformModName,
+            HistoryFromVersion         = string.IsNullOrEmpty(CurrentVersion) ? "Not installed" : CurrentVersion,
+            HistoryToVersion           = NewVersionDisplay,
+            HistorySource              = source,
+            HistoryPageUrl             = pageUrl,
+            HistorySuccess             = success,
+            HistoryGroupId             = groupId,
+            HistoryPakFileName         = string.IsNullOrEmpty(primaryDest) ? null : System.IO.Path.GetFileName(primaryDest),
+            HistoryReplacedPakFileName = _lastInstallResult?.GetReplacedName(primaryDest),
         });
+
+        foreach (var child in _groupChildren)
+        {
+            _historyStore.Add(new DownloadHistoryEntry
+            {
+                HistoryDownloadedAt    = now,
+                HistoryModName         = child.ModName,
+                HistoryPlatformModName = child.PlatformModName,
+                HistoryFromVersion     = string.IsNullOrEmpty(child.CurrentVersion) ? "Not installed" : child.CurrentVersion,
+                HistoryToVersion       = child.NewVersionDisplay,
+                HistorySource          = source,
+                HistoryPageUrl         = pageUrl,
+                HistorySuccess         = success,
+                HistoryGroupId         = groupId,
+            });
+        }
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"nexusmods\.com/[^/]+/mods/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]

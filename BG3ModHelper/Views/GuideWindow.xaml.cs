@@ -236,7 +236,7 @@ public partial class GuideWindow : Window
 
     private void ImageLink(string prefix, string label, string logoUri, string assetFileName)
     {
-        var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", assetFileName);
+        var resourceUri = new Uri($"pack://application:,,,/Assets/{assetFileName}");
 
         var tb = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 1) };
         tb.Inlines.Add(new Run(prefix));
@@ -253,9 +253,9 @@ public partial class GuideWindow : Window
         link.Inlines.Add(new InlineUIContainer(logo));
         link.Inlines.Add(new Run(label));
 
-        if (System.IO.File.Exists(path))
+        try
         {
-            var bmp = new System.Windows.Media.Imaging.BitmapImage(new Uri(path));
+            var bmp = new System.Windows.Media.Imaging.BitmapImage(resourceUri);
             var img = new System.Windows.Controls.Image
             {
                 Source  = bmp,
@@ -271,6 +271,7 @@ public partial class GuideWindow : Window
             ToolTipService.SetShowDuration(link, 30000);
             ToolTipService.SetInitialShowDelay(link, 200);
         }
+        catch { /* 리소스 없으면 툴팁 없이 표시 */ }
 
         tb.Inlines.Add(link);
         Add(tb);

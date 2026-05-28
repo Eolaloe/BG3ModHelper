@@ -29,3 +29,12 @@ public class NexusUserInfo
     public bool   IsPremium { get; set; }
     public string Email     { get; set; } = "";
 }
+
+/// <summary>Result from the Nexus MD5 search endpoint.</summary>
+public sealed record NexusMd5Result(
+    int    ModId,
+    string ModName,
+    long   FileId,
+    string FileName,
+    string FileVersion
+);

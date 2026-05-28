@@ -18,7 +18,7 @@ public static class Downloader
     /// Full pipeline: download → extract → backup → install.
     /// Returns the installed .pak path on success.
     /// </summary>
-    public static async Task<string> DownloadAndInstallAsync(
+    public static async Task<DownloadInstallResult> DownloadAndInstallAsync(
         string downloadUrl,
         string existingPakPath,
         string modsFolder,
@@ -51,51 +51,82 @@ public static class Downloader
             if (pakFiles.Count == 0)
                 throw new InvalidOperationException("No .pak files found in downloaded archive.");
 
-            // Step 3: Match pak to install — prefer same filename, else first
+            // Step 3: Identify primary pak — prefer filename match, else first
             var existingName = Path.GetFileName(existingPakPath);
-            var matched      = pakFiles.FirstOrDefault(p =>
+            var primaryFile  = pakFiles.FirstOrDefault(p =>
                                    string.Equals(Path.GetFileName(p), existingName,
-                                       StringComparison.OrdinalIgnoreCase));
-            var sourceFile   = matched ?? pakFiles[0];
-            if (matched != null)
-                Logger.Debug($"Downloader: pak matched by name → {existingName}");
-            else
-                Logger.Debug($"Downloader: pak name mismatch, using first in archive → {Path.GetFileName(sourceFile)} (expected {existingName}, found [{string.Join(", ", pakFiles.Select(Path.GetFileName))}])");
+                                       StringComparison.OrdinalIgnoreCase))
+                               ?? pakFiles[0];
 
-            // Step 4: Backup existing pak (only if enabled in settings)
+            if (!string.IsNullOrEmpty(existingName))
+            {
+                if (Path.GetFileName(primaryFile) == existingName)
+                    Logger.Debug($"Downloader: pak matched by name → {existingName}");
+                else
+                    Logger.Debug($"Downloader: pak name mismatch, using first in archive → {Path.GetFileName(primaryFile)} (expected {existingName})");
+            }
+
+            // Step 4: Backup existing primary pak (only if enabled)
             if (backupEnabled && File.Exists(existingPakPath))
             {
                 progress?.Report(new DownloadProgress("Backing up...", 0));
                 BackupExistingPak(existingPakPath);
             }
 
-            // Step 5: Install new pak
+            // Step 5: Install all paks — primary first, then any newly added components
             progress?.Report(new DownloadProgress("Applying...", 0));
-            var destPath = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
-            try
+            var installedPaths   = new List<string>();
+            var replacedPakNames = new Dictionary<string, string>(); // destPath → replaced old filename
+
+            foreach (var sourceFile in pakFiles)
             {
-                File.Copy(sourceFile, destPath, overwrite: true);
-            }
-            catch (IOException ex)
-            {
-                throw new PakInUseException(Path.GetFileName(destPath), ex);
+                var destPath = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
+
+                // Detect same-UUID duplicate with different filename (cross-platform rename)
+                var duplicate = FindDuplicatePak(sourceFile, modsFolder);
+                if (duplicate != null)
+                {
+                    try
+                    {
+                        if (backupEnabled)
+                            BackupExistingPak(duplicate);  // → .bak
+                        else
+                            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                                duplicate,
+                                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        replacedPakNames[destPath] = Path.GetFileName(duplicate);
+                        InvalidateCache(duplicate, duplicate);
+                        Logger.Info($"Downloader: {(backupEnabled ? "backed up" : "sent to Recycle Bin")} duplicate pak {Path.GetFileName(duplicate)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Downloader: failed to remove duplicate {Path.GetFileName(duplicate)} — {ex.Message}");
+                    }
+                }
+
+                try { File.Copy(sourceFile, destPath, overwrite: true); }
+                catch (IOException ex) { throw new PakInUseException(Path.GetFileName(destPath), ex); }
+                installedPaths.Add(destPath);
+                Logger.Info($"Downloader: installed {Path.GetFileName(destPath)}{(sourceFile == primaryFile ? "" : " (new component)")}");
             }
 
             progress?.Report(new DownloadProgress("Updated", 100));
-            Logger.Info($"Downloader: installed {Path.GetFileName(destPath)}");
 
-            // Record fileId for accurate update detection next time (spec §4.11)
+            // Record fileId for accurate update detection (primary pak only)
             if (fileIdStore != null && !string.IsNullOrEmpty(uuid) && fileId != 0)
                 fileIdStore.SetFileId(uuid, modId, fileId, fileName);
 
-            // Invalidate installedmods.json cache entry so next scan re-parses the new pak
-            InvalidateCache(existingPakPath, destPath);
+            // Invalidate cache for all installed paks
+            var primaryDest = Path.Combine(modsFolder, Path.GetFileName(primaryFile));
+            InvalidateCache(existingPakPath, primaryDest);
+            foreach (var path in installedPaths.Where(p => p != primaryDest))
+                InvalidateCache(path, path);
 
-            return destPath;
+            return new DownloadInstallResult(installedPaths, replacedPakNames);
         }
         finally
         {
-            // Clean up temp files
             try { Directory.Delete(tempDir, recursive: true); }
             catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
         }
@@ -108,7 +139,7 @@ public static class Downloader
     /// Skips download — goes straight to extract → backup → install.
     /// Returns the installed pak path.
     /// </summary>
-    public static async Task<string> InstallLocalArchiveAsync(
+    public static async Task<DownloadInstallResult> InstallLocalArchiveAsync(
         string archivePath,
         string modsFolder,
         bool   backupEnabled,
@@ -124,30 +155,49 @@ public static class Downloader
             if (pakFiles.Count == 0)
                 throw new InvalidOperationException("No .pak files found in archive.");
 
-            var sourceFile = pakFiles[0];
-            var destPath   = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
+            var installedPaths   = new List<string>();
+            var replacedPakNames = new Dictionary<string, string>();
 
-            if (backupEnabled && File.Exists(destPath))
+            progress?.Report(new DownloadProgress("Applying...", 80));
+            foreach (var sourceFile in pakFiles)
             {
-                progress?.Report(new DownloadProgress("Backing up...", 80));
-                BackupExistingPak(destPath);
-            }
+                var destPath = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
 
-            progress?.Report(new DownloadProgress("Applying...", 95));
-            try
-            {
-                File.Copy(sourceFile, destPath, overwrite: true);
-            }
-            catch (IOException ex)
-            {
-                throw new PakInUseException(Path.GetFileName(destPath), ex);
+                var duplicate = FindDuplicatePak(sourceFile, modsFolder);
+                if (duplicate != null)
+                {
+                    try
+                    {
+                        if (backupEnabled)
+                            BackupExistingPak(duplicate);
+                        else
+                            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                                duplicate,
+                                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        replacedPakNames[destPath] = Path.GetFileName(duplicate);
+                        InvalidateCache(duplicate, duplicate);
+                        Logger.Info($"Downloader: {(backupEnabled ? "backed up" : "sent to Recycle Bin")} duplicate pak {Path.GetFileName(duplicate)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Downloader: failed to remove duplicate {Path.GetFileName(duplicate)} — {ex.Message}");
+                    }
+                }
+
+                if (backupEnabled && File.Exists(destPath))
+                    BackupExistingPak(destPath);
+
+                try { File.Copy(sourceFile, destPath, overwrite: true); }
+                catch (IOException ex) { throw new PakInUseException(Path.GetFileName(destPath), ex); }
+
+                installedPaths.Add(destPath);
+                InvalidateCache(destPath, destPath);
+                Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} from local archive");
             }
 
             progress?.Report(new DownloadProgress("Updated", 100));
-            Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} from local archive");
-
-            InvalidateCache(destPath, destPath);
-            return destPath;
+            return new DownloadInstallResult(installedPaths, replacedPakNames);
         }
         finally
         {
@@ -261,6 +311,55 @@ public static class Downloader
         }
     }
 
+    // === Duplicate detection ===
+
+    /// <summary>
+    /// Looks for an existing pak in the mods folder that has the same UUID + MetaModuleName
+    /// as <paramref name="newPakPath"/> but a different filename.
+    /// Uses the installedmods.json cache — no pak parsing required.
+    /// Returns the conflicting pak path, or null if none found.
+    /// </summary>
+    public static string? FindDuplicatePak(string newPakPath, string modsFolder)
+    {
+        try
+        {
+            var cacheFile = Path.Combine(SettingsStore.GetDataFolder(), "installedmods.json");
+            if (!File.Exists(cacheFile)) return null;
+
+            var cache = Newtonsoft.Json.JsonConvert.DeserializeObject<
+                BG3ModHelper.Models.Cache.InstalledModsCache>(File.ReadAllText(cacheFile));
+            if (cache == null) return null;
+
+            // Parse the incoming pak to get its UUID + ModuleName
+            var incoming = ModScanner.InspectPak(newPakPath);
+            if (incoming == null || string.IsNullOrEmpty(incoming.MetaUuid)) return null;
+
+            var newFileName = Path.GetFileName(newPakPath);
+
+            foreach (var (path, entry) in cache.Mods)
+            {
+                var mod = entry.ModData;
+                if (!string.Equals(mod.MetaUuid, incoming.MetaUuid, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!string.Equals(mod.MetaModuleName, incoming.MetaModuleName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (string.Equals(Path.GetFileName(path), newFileName, StringComparison.OrdinalIgnoreCase))
+                    continue; // same filename = normal overwrite, not a duplicate
+                if (!File.Exists(path))
+                    continue; // stale cache entry
+
+                Logger.Info($"Downloader: duplicate pak detected — {Path.GetFileName(path)} will be replaced by {newFileName} (same UUID+ModuleName)");
+                return path;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Downloader: duplicate check failed — {ex.Message}");
+        }
+
+        return null;
+    }
+
     // === Backup ===
 
     private static void BackupExistingPak(string pakPath)
@@ -276,10 +375,102 @@ public static class Downloader
         File.Move(pakPath, bakPath);
         Logger.Info($"Downloader: backed up {Path.GetFileName(pakPath)} → .pak.bak");
     }
+
+    /// <summary>
+    /// Downloads a zip once and installs all matched .pak files (group update).
+    /// Targets are matched by filename; unmatched targets are skipped with a warning.
+    /// </summary>
+    public static async Task DownloadAndInstallGroupAsync(
+    string downloadUrl,
+    IReadOnlyList<PakInstallTarget> targets,
+    string modsFolder,
+    bool backupEnabled,
+    ModFileIdStore? fileIdStore,
+    IProgress<DownloadProgress>? progress,
+    CancellationToken ct = default)
+{
+    var tempDir    = Path.Combine(Path.GetTempPath(), Constants.APP_DATA_FOLDER, Guid.NewGuid().ToString("N"));
+    var tempZip    = Path.Combine(tempDir, "download.zip");
+    var extractDir = Path.Combine(tempDir, "extracted");
+
+    try
+    {
+        Directory.CreateDirectory(tempDir);
+        Directory.CreateDirectory(extractDir);
+
+        progress?.Report(new DownloadProgress("Downloading...", 0));
+        await DownloadFileAsync(downloadUrl, tempZip, progress, ct);
+
+        progress?.Report(new DownloadProgress("Extracting...", 0));
+        var pakFiles = ExtractPakFiles(tempZip, extractDir);
+        if (pakFiles.Count == 0)
+            throw new InvalidOperationException("No .pak files found in downloaded archive.");
+
+        for (int i = 0; i < targets.Count; i++)
+        {
+            var target       = targets[i];
+            var existingName = Path.GetFileName(target.ExistingPakPath);
+
+            var source = pakFiles.FirstOrDefault(p =>
+                string.Equals(Path.GetFileName(p), existingName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (source == null)
+            {
+                Logger.Warn($"Downloader: no pak matched for '{existingName}' in group archive — skipping");
+                continue;
+            }
+
+            progress?.Report(new DownloadProgress($"Applying {existingName}...", 0));
+
+            if (backupEnabled && File.Exists(target.ExistingPakPath))
+                BackupExistingPak(target.ExistingPakPath);
+
+            var destPath = Path.Combine(modsFolder, Path.GetFileName(source));
+            try { File.Copy(source, destPath, overwrite: true); }
+            catch (IOException ex) { throw new PakInUseException(Path.GetFileName(destPath), ex); }
+
+            if (fileIdStore != null && !string.IsNullOrEmpty(target.Uuid) && target.FileId != 0)
+                fileIdStore.SetFileId(target.Uuid, target.ModId, target.FileId, target.FileName);
+
+            InvalidateCache(target.ExistingPakPath, destPath);
+            Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} (group {i + 1}/{targets.Count})");
+        }
+
+        progress?.Report(new DownloadProgress("Updated", 100));
+    }
+    finally
+    {
+        try { Directory.Delete(tempDir, recursive: true); }
+        catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
+    }
+    }
 }
 
 /// <summary>Progress info for download UI.</summary>
 public record DownloadProgress(string Text, int Percent);
+
+/// <summary>
+/// Result of a download+install operation.
+/// InstalledPaths: all pak paths written to the mods folder.
+/// ReplacedPakNames: maps destPath → old pak filename that was deleted (cross-platform rename).
+/// </summary>
+public record DownloadInstallResult(
+    List<string> InstalledPaths,
+    Dictionary<string, string> ReplacedPakNames)
+{
+    public string PrimaryPath => InstalledPaths.Count > 0 ? InstalledPaths[0] : "";
+    public string? GetReplacedName(string destPath) =>
+        ReplacedPakNames.TryGetValue(destPath, out var name) ? name : null;
+}
+
+/// <summary>One pak to install as part of a group download.</summary>
+public record PakInstallTarget(
+    string  ExistingPakPath,
+    string? Uuid,
+    int     ModId,
+    long    FileId,
+    string  FileName);
 
 /// <summary>
 /// Thrown when the .pak file cannot be overwritten because it is locked

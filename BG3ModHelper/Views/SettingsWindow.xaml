@@ -125,7 +125,7 @@
                                     Click="OpenNexusKeyPage_Click">
                                 <Button.ToolTip>
                                     <ToolTip HasDropShadow="True" Padding="4">
-                                        <Image Source="pack://siteoforigin:,,,/Assets/api_nexus.png" Stretch="None"/>
+                                        <Image Source="pack://application:,,,/Assets/api_nexus.png" Stretch="None"/>
                                     </ToolTip>
                                 </Button.ToolTip>
                             </Button>
@@ -158,7 +158,7 @@
                                     Click="OpenModioKeyPage_Click">
                                 <Button.ToolTip>
                                     <ToolTip HasDropShadow="True" Padding="4">
-                                        <Image Source="pack://siteoforigin:,,,/Assets/api_modio.png" Stretch="None"/>
+                                        <Image Source="pack://application:,,,/Assets/api_modio.png" Stretch="None"/>
                                     </ToolTip>
                                 </Button.ToolTip>
                             </Button>
@@ -288,7 +288,10 @@
                                    VerticalAlignment="Center"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                             <TextBlock VerticalAlignment="Center">
-                                <Run Text="GitHub"/>
+                                <Hyperlink NavigateUri="https://github.com/Eolaloe/BG3ModHelper"
+                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                    <Run Text="GitHub"/>
+                                </Hyperlink>
                             </TextBlock>
                             <Image Source="pack://application:,,,/Assets/nexus.png"
                                    Width="16" Height="16" Margin="10,0,4,0"
@@ -300,12 +303,34 @@
                                     <Run Text="Nexus"/>
                                 </Hyperlink>
                             </TextBlock>
+                            <Image Source="pack://application:,,,/Assets/Discord.png"
+                                   Width="16" Height="16" Margin="10,0,4,0"
+                                   VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock VerticalAlignment="Center">
+                                <Hyperlink NavigateUri="https://discord.gg/Pj4UksjUQs"
+                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                    <Run Text="Discord"/>
+                                </Hyperlink>
+                            </TextBlock>
                         </StackPanel>
                         <TextBlock Margin="0,4,0,0">
                             <Run Text="Data folder: " FontWeight="SemiBold"/>
                             <Hyperlink x:Name="DataFolderLink"
                                        RequestNavigate="DataFolder_RequestNavigate">
                                 <Run x:Name="DataFolderText"/>
+                            </Hyperlink>
+                        </TextBlock>
+                        <TextBlock Margin="0,4,0,0" Foreground="Gray" FontSize="11">
+                            <Run Text="Licensed under "/>
+                            <Hyperlink NavigateUri="https://www.gnu.org/licenses/gpl-3.0"
+                                       RequestNavigate="Hyperlink_RequestNavigate">
+                                <Run Text="GPL v3.0"/>
+                            </Hyperlink>
+                            <Run Text=" — "/>
+                            <Hyperlink NavigateUri="https://github.com/Eolaloe/BG3ModHelper/blob/main/THIRD_PARTY_LICENSES.md"
+                                       RequestNavigate="Hyperlink_RequestNavigate">
+                                <Run Text="Third-party licenses"/>
                             </Hyperlink>
                         </TextBlock>
                     </StackPanel>

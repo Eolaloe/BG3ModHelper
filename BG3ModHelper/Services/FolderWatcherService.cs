@@ -18,13 +18,13 @@ public sealed record ArchiveSourceInfo(
     string  Source,
 
     /// <summary>
-    /// "Confirmed" — 99%+ certain (DB match or PublishHandle-based)
+    /// "Confirmed" — 99%+ certain (MD5 match, DB match, or PublishHandle-based)
     /// "Estimated" — 85~90% likely (zip filename pattern-based)
-    /// "Required"  — user must choose (Both + no zip pattern)
+    /// "Required"  — user must choose (Both + no hint)
     /// </summary>
     string  Confidence,
 
-    /// <summary>Source hint inferred from zip filename pattern. "Nexus" / "ModIO" / null</summary>
+    /// <summary>Source hint inferred from zip filename pattern or MD5 result. "Nexus" / "ModIO" / null</summary>
     string? ZipHintSource,
 
     string  ModName,
@@ -39,8 +39,17 @@ public sealed record ArchiveSourceInfo(
     /// <summary>Mod version decoded from meta.lsx Version64. Empty if not available.</summary>
     string  ModVersion,
 
-    /// <summary>Platform mod name from Nexus DB lookup. Empty for mod.io (fetched later via API).</summary>
-    string  PlatformModName
+    /// <summary>Platform mod name from Nexus (MD5/DB) or empty (mod.io fetched later via API).</summary>
+    string  PlatformModName,
+
+    /// <summary>Nexus file ID from MD5 search. 0 if unknown.</summary>
+    long    NexusFileId,
+
+    /// <summary>Nexus archive filename from MD5 search. Empty if unknown.</summary>
+    string  NexusFileName,
+
+    /// <summary>Mod UUID from pak meta.lsx. Empty if not parsed.</summary>
+    string  MetaUuid
 );
 
 // === Service ===
@@ -52,6 +61,7 @@ public sealed record ArchiveSourceInfo(
 public sealed class FolderWatcherService : IDisposable
 {
     private readonly NexusIdDatabase                     _nexusDb;
+    private readonly NexusApi?                           _nexusApi;
     private readonly Func<ArchiveSourceInfo, Task>       _onDetected;
     private readonly List<FileSystemWatcher>             _watchers = new();
     private readonly Dictionary<string, DateTime>        _recent   = new();
@@ -81,10 +91,12 @@ public sealed class FolderWatcherService : IDisposable
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public FolderWatcherService(NexusIdDatabase nexusDb,
-                                Func<ArchiveSourceInfo, Task> onDetected)
+                                Func<ArchiveSourceInfo, Task> onDetected,
+                                string? nexusApiKey = null)
     {
         _nexusDb    = nexusDb;
         _onDetected = onDetected;
+        _nexusApi   = string.IsNullOrWhiteSpace(nexusApiKey) ? null : new NexusApi(nexusApiKey);
     }
 
     // === Watcher lifecycle ===
@@ -159,7 +171,7 @@ public sealed class FolderWatcherService : IDisposable
         int[] backoffSeconds = { 1, 2, 4, 8 };
         for (int attempt = 0; attempt < backoffSeconds.Length; attempt++)
         {
-            info = await Task.Run(() => AnalyzeArchive(path));
+            info = await AnalyzeArchive(path);
             if (info != null) break;
             if (attempt < backoffSeconds.Length - 1)
                 await Task.Delay(TimeSpan.FromSeconds(backoffSeconds[attempt]));
@@ -213,44 +225,88 @@ public sealed class FolderWatcherService : IDisposable
     // === Archive analysis ===
 
     /// <summary>
-    /// Two-step source detection:
-    ///   Step 1: zip filename pattern (Nexus/mod.io hint)
-    ///   Step 2: pak meta.lsx (PublishHandle + Nexus DB lookup)
-    /// Returns null if no pak found.
+    /// Source detection for an archive file.
+    ///   Primary:  Nexus MD5 search (API call — confirms modId/fileId/name directly)
+    ///   Fallback: zip filename pattern + pak meta.lsx + local DB lookup
+    /// Returns null if no pak found inside the archive.
     /// </summary>
-    public ArchiveSourceInfo? AnalyzeArchive(string archivePath)
+    public async Task<ArchiveSourceInfo?> AnalyzeArchive(string archivePath)
     {
         try
         {
-            // Step 1: analyze zip filename pattern
-            var zipName = Path.GetFileName(archivePath);
-            var (zipHint, zipModId) = AnalyzeZipFileName(zipName);
+            // MD5 computation and pak extraction run in parallel
+            var md5Task     = Task.Run(() => ComputeMd5(archivePath));
+            var analyzeTask = Task.Run(() => AnalyzeArchiveCore(archivePath));
+            await Task.WhenAll(md5Task, analyzeTask);
 
-            // Check for pak entry
-            var pakFileName = FindFirstPakName(archivePath);
+            var (zipHint, zipModId, mod, pakFileName) = analyzeTask.Result;
             if (pakFileName == null) return null;
 
-            // Extract pak to temp + parse meta
-            var tempDir = Path.Combine(Path.GetTempPath(), "BG3MM_FolderWatch",
-                                       Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(tempDir);
-            try
+            // MD5 API call (after both tasks complete)
+            NexusMd5Result? md5Result = null;
+            if (_nexusApi != null)
             {
-                var extracted = ExtractPakFiles(archivePath, tempDir);
-                if (extracted.Count == 0) return null;
+                var md5 = md5Task.Result;
+                if (md5 != null)
+                {
+                    md5Result = await _nexusApi.Md5SearchAsync(md5);
+                    if (md5Result != null)
+                        Logger.Info($"MD5 match: {Path.GetFileName(archivePath)} → modId={md5Result.ModId} fileId={md5Result.FileId}");
+                    else
+                        Logger.Debug($"MD5 no match: {Path.GetFileName(archivePath)} — falling back to DB");
+                }
+            }
 
-                var mod     = ParsePakMeta(extracted[0]);
-                return BuildSourceInfo(mod, pakFileName, archivePath, zipHint, zipModId, isDirectPak: false);
-            }
-            finally
-            {
-                try { Directory.Delete(tempDir, recursive: true); }
-                catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
-            }
+            return BuildSourceInfo(mod, pakFileName, archivePath, zipHint, zipModId,
+                                   isDirectPak: false, md5Result);
         }
         catch (Exception ex)
         {
             Logger.Warn($"FolderWatcherService.AnalyzeArchive: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>CPU-bound sync part of archive analysis — zip hint + pak extraction + meta parse.</summary>
+    private static (string? zipHint, int zipModId, InstalledMod? mod, string? pakFileName)
+        AnalyzeArchiveCore(string archivePath)
+    {
+        var zipName = Path.GetFileName(archivePath);
+        var (zipHint, zipModId) = AnalyzeZipFileName(zipName);
+
+        var pakFileName = FindFirstPakName(archivePath);
+        if (pakFileName == null) return (zipHint, zipModId, null, null);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "BG3MM_FolderWatch",
+                                   Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var extracted = ExtractPakFiles(archivePath, tempDir);
+            if (extracted.Count == 0) return (zipHint, zipModId, null, null);
+
+            var mod = ParsePakMeta(extracted[0]);
+            return (zipHint, zipModId, mod, pakFileName);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); }
+            catch (Exception ex) { Logger.Warn($"Failed to delete temp dir: {ex.Message}"); }
+        }
+    }
+
+    /// <summary>Computes the MD5 hash of a file. Returns lowercase hex string, or null on failure.</summary>
+    private static string? ComputeMd5(string path)
+    {
+        try
+        {
+            using var md5    = System.Security.Cryptography.MD5.Create();
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(md5.ComputeHash(stream)).ToLowerInvariant();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"MD5 computation failed for {Path.GetFileName(path)}: {ex.Message}");
             return null;
         }
     }
@@ -356,8 +412,7 @@ public sealed class FolderWatcherService : IDisposable
 
     /// <summary>
     /// Analyzes a .pak file directly (no archive extraction).
-    /// Used for drag-and-drop of raw pak files.
-    /// No zip filename hint — switch button always enabled.
+    /// Used for drag-and-drop of raw pak files. No MD5 search — pak MD5 not in Nexus DB.
     /// </summary>
     public ArchiveSourceInfo? AnalyzePakFile(string pakPath)
     {
@@ -367,7 +422,7 @@ public sealed class FolderWatcherService : IDisposable
             if (mod == null) return null;
 
             return BuildSourceInfo(mod, Path.GetFileName(pakPath), pakPath,
-                                   zipHint: null, zipModId: 0, isDirectPak: true);
+                                   zipHint: null, zipModId: 0, isDirectPak: true, md5Result: null);
         }
         catch (Exception ex)
         {
@@ -377,26 +432,57 @@ public sealed class FolderWatcherService : IDisposable
     }
 
     /// <summary>
-    /// Core source detection logic shared by AnalyzeArchive and AnalyzePakFile.
+    /// Core source detection logic.
+    /// MD5 result (primary): confirms Nexus modId/fileId/name directly.
+    /// Fallback: local DB + zip filename pattern.
     /// isDirectPak: no zip hint — ModIO/Others become Estimated so switch stays enabled.
     /// </summary>
     private ArchiveSourceInfo BuildSourceInfo(
-        InstalledMod? mod,
-        string        pakFileName,
-        string        archivePath,
-        string?       zipHint,
-        int           zipModId,
-        bool          isDirectPak)
+        InstalledMod?   mod,
+        string          pakFileName,
+        string          archivePath,
+        string?         zipHint,
+        int             zipModId,
+        bool            isDirectPak,
+        NexusMd5Result? md5Result)
     {
-        var modName  = mod?.MetaModuleName ?? Path.GetFileNameWithoutExtension(pakFileName);
-        var handle   = mod?.ModioPublishHandle ?? 0;
+        var modName = mod?.MetaModuleName ?? Path.GetFileNameWithoutExtension(pakFileName);
+        var handle  = mod?.ModioPublishHandle ?? 0;
+        var uuid    = mod?.MetaUuid ?? "";
 
-        var nexusEntry = _nexusDb.LookupSingle(pakFileName);
-        bool hasNexus  = nexusEntry != null;
-        bool hasModio  = handle != 0;
+        // Nexus: MD5 confirmed (primary) → DB lookup (fallback)
+        bool   hasNexus;
+        int?   nexusModId;
+        string nexusModName;
+        long   nexusFileId;
+        string nexusFileName;
+
+        if (md5Result != null)
+        {
+            hasNexus     = true;
+            nexusModId   = md5Result.ModId;
+            nexusModName = md5Result.ModName;
+            nexusFileId  = md5Result.FileId;
+            nexusFileName = md5Result.FileName;
+        }
+        else
+        {
+            var nexusEntry = _nexusDb.LookupSingle(pakFileName);
+            hasNexus      = nexusEntry != null;
+            nexusModId    = nexusEntry?.NexusModId
+                            ?? (zipHint == "Nexus" && zipModId > 0 ? zipModId : (int?)null);
+            nexusModName  = nexusEntry?.NexusModName ?? "";
+            nexusFileId   = 0;
+            nexusFileName = "";
+        }
+
+        bool hasModio = handle != 0;
+
+        // When MD5 confirmed Nexus, treat it as a Nexus zip hint for Both detection
+        var effectiveZipHint = zipHint ?? (md5Result != null ? "Nexus" : null);
 
         bool isBoth = (hasModio && hasNexus)
-                   || (hasModio && zipHint == "Nexus")
+                   || (hasModio && effectiveZipHint == "Nexus")
                    || (hasNexus && zipHint == "ModIO");
 
         string source;
@@ -405,7 +491,7 @@ public sealed class FolderWatcherService : IDisposable
         if (isBoth)
         {
             source     = "Both";
-            confidence = zipHint != null ? "Estimated" : "Required";
+            confidence = effectiveZipHint != null ? "Estimated" : "Required";
         }
         else if (hasModio)
         {
@@ -428,9 +514,6 @@ public sealed class FolderWatcherService : IDisposable
             confidence = isDirectPak ? "Estimated" : "Confirmed";
         }
 
-        var nexusModId = nexusEntry?.NexusModId
-            ?? (zipHint == "Nexus" && zipModId > 0 ? zipModId : (int?)null);
-
         var nexusPageUrl = nexusModId.HasValue
             ? $"https://www.nexusmods.com/baldursgate3/mods/{nexusModId.Value}"
             : null;
@@ -438,7 +521,7 @@ public sealed class FolderWatcherService : IDisposable
         return new ArchiveSourceInfo(
             Source:          source,
             Confidence:      confidence,
-            ZipHintSource:   zipHint,
+            ZipHintSource:   effectiveZipHint,
             ModName:         modName,
             PakFileName:     pakFileName,
             NexusModId:      nexusModId,
@@ -446,7 +529,10 @@ public sealed class FolderWatcherService : IDisposable
             PublishHandle:   handle,
             ArchivePath:     archivePath,
             ModVersion:      mod?.MetaVersion ?? "",
-            PlatformModName: nexusEntry?.NexusModName ?? "");
+            PlatformModName: nexusModName,
+            NexusFileId:     nexusFileId,
+            NexusFileName:   nexusFileName,
+            MetaUuid:        uuid);
     }
 
     /// <summary>

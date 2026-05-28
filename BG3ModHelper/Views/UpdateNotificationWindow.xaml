@@ -51,6 +51,29 @@
             <Setter Property="Background" Value="#888888"/>
         </Style>
 
+        <Style x:Key="StopActionButton" TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#c42b2b"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="MinWidth" Value="90"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#a32020"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SwitchButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#cccccc"/>
@@ -100,11 +123,21 @@
 
         <DataTemplate DataType="{x:Type vm:UpdateEntryViewModel}">
             <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPreserved}" Value="True">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="30"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="22"/>
                             <ColumnDefinition Width="80"/>
                             <ColumnDefinition Width="20"/>
                             <ColumnDefinition Width="80"/>
@@ -127,43 +160,62 @@
                                            FontSize="13" FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis"
                                            Visibility="{Binding HasPlatformName, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <TextBlock Text="{Binding LocalModName}"
-                                           TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="FontSize" Value="13"/>
-                                            <Setter Property="Foreground" Value="#222222"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasPlatformName}" Value="True">
-                                                    <Setter Property="FontSize" Value="11"/>
-                                                    <Setter Property="Foreground" Value="#888888"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                <DockPanel LastChildFill="True">
+                                    <Button DockPanel.Dock="Left"
+                                            Content="{Binding ExpandIcon}"
+                                            Command="{Binding ToggleExpandCommand}"
+                                            Visibility="{Binding HasGroupChildren, Converter={StaticResource BoolToVisibilityConverter}}"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="0,0,4,0" Margin="0,0,2,0"
+                                            FontSize="9" Cursor="Hand" Focusable="False"
+                                            VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding LocalModName}"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="FontSize" Value="13"/>
+                                                <Setter Property="Foreground" Value="#222222"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasPlatformName}" Value="True">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="Foreground" Value="#888888"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DockPanel>
                             </StackPanel>
                         </Button>
-                        <TextBlock Grid.Column="2"
+                        <!-- Lock button (col 2) -->
+                        <Button Grid.Column="2"
+                                Content="🔒"
+                                Foreground="{Binding PreserveLockColor}"
+                                Command="{Binding TogglePreserveCommand}"
+                                Background="Transparent" BorderThickness="0"
+                                Width="20" Padding="0" FontSize="12"
+                                Cursor="Hand"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                ToolTip="{Binding PreserveLockTooltip}"
+                                ToolTipService.InitialShowDelay="400"/>
+                        <TextBlock Grid.Column="3"
                                    Text="{Binding CurrentVersion}"
                                    VerticalAlignment="Center" HorizontalAlignment="Right"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="0,0,2,0"/>
-                        <TextBlock Grid.Column="3"
+                        <TextBlock Grid.Column="4"
                                    Text="→"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"
                                    FontSize="11" Foreground="#888888"/>
-                        <TextBlock Grid.Column="4"
+                        <TextBlock Grid.Column="5"
                                    Text="{Binding NewVersionDisplay}"
                                    VerticalAlignment="Center" HorizontalAlignment="Left"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="2,0,0,0"/>
-                        <Grid Grid.Column="5">
+                        <Grid Grid.Column="6">
                             <Border MinWidth="46" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Background="{Binding SourceBadgeColor}"
                                     CornerRadius="3" Padding="4,1">
-                                <Border.Background>
-                                    <SolidColorBrush Color="{Binding SourceBadgeColor}"/>
-                                </Border.Background>
                                 <TextBlock Text="{Binding SourceBadge}"
                                            Foreground="White" FontSize="10" FontWeight="SemiBold"
                                            TextAlignment="Center"/>
@@ -176,19 +228,56 @@
                                     Width="22" Margin="0,0,2,0"
                                     ToolTip="Switch source"/>
                         </Grid>
-                        <Button Grid.Column="6"
+                        <Button Grid.Column="7"
                                 Content="{Binding ActionLabel}"
                                 Style="{Binding ActionStyle, Converter={StaticResource StyleKeyConverter}}"
                                 Command="{Binding PrimaryActionCommand}"
-                                IsEnabled="{Binding IsActionEnabled}"
+                                IsEnabled="{Binding IsActionButtonEnabled}"
                                 Width="70"
-                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="7"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                ToolTipService.InitialShowDelay="200"
+                                ToolTipService.ShowDuration="30000"
+                                ToolTipService.Placement="Left">
+                            <Button.ToolTip>
+                                <ToolTip MaxWidth="640">
+                                    <TextBlock Text="{Binding Changelog}"
+                                               TextWrapping="Wrap"
+                                               FontSize="11"/>
+                                </ToolTip>
+                            </Button.ToolTip>
+                        </Button>
+                        <TextBlock Grid.Column="8"
                                    Text="{Binding StatusText}"
                                    Foreground="{Binding StatusColor}"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"
                                    FontSize="11"/>
                     </Grid>
+                    <!-- Group children (expanded pak list) -->
+                    <ItemsControl ItemsSource="{Binding GroupChildren}"
+                                  Margin="38,3,0,2"
+                                  Visibility="{Binding IsGroupExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="75"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding LocalModName}"
+                                               FontSize="11" Foreground="#666666"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding StatusText}"
+                                               Foreground="{Binding StatusColor}"
+                                               FontSize="11" VerticalAlignment="Center"
+                                               HorizontalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
                     <StackPanel Margin="30,6,0,2"
                                 Visibility="{Binding ShowNexusRegisterPanel, Converter={StaticResource BoolToVisibilityConverter}}">
                         <TextBlock Text="Paste the Nexus mod page URL to link it. This will be shared with the community."
@@ -308,6 +397,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="30"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="22"/>
                         <ColumnDefinition Width="80"/>
                         <ColumnDefinition Width="20"/>
                         <ColumnDefinition Width="80"/>
@@ -320,14 +410,18 @@
                             Command="{Binding SortByNameCommand}">
                         <TextBlock Text="{Binding NameSortHeader}" Style="{StaticResource ColHeader}"/>
                     </Button>
-                    <TextBlock Grid.Column="2" Grid.ColumnSpan="3" Text="Version" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                    <Button Grid.Column="5" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                    <Button Grid.Column="3" Grid.ColumnSpan="3" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                            Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                            Command="{Binding SortByVersionCommand}">
+                        <TextBlock Text="{Binding VersionSortHeader}" Style="{StaticResource ColHeader}"/>
+                    </Button>
+                    <Button Grid.Column="6" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
                             Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
                             Command="{Binding SortBySourceCommand}">
                         <TextBlock Text="{Binding SourceSortHeader}" Style="{StaticResource ColHeader}"/>
                     </Button>
-                    <TextBlock Grid.Column="6" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                    <TextBlock Grid.Column="7" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Column="7" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Column="8" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                 </Grid>
             </Border>
 
