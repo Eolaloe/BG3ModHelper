@@ -72,15 +72,11 @@
 
         <!-- Source badge + ⇄ switch button + mod name -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" VerticalAlignment="Center">
-            <Border CornerRadius="3" Padding="6,2" Margin="0,0,6,0"
-                    MinWidth="46" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border Style="{StaticResource SourceBadgeBorder}" Margin="0,0,6,0">
                 <Border.Background>
                     <SolidColorBrush Color="{Binding BadgeColor}"/>
                 </Border.Background>
-                <TextBlock Text="{Binding BadgeText}"
-                           Foreground="White"
-                           FontSize="10" FontWeight="SemiBold"
-                           TextAlignment="Center"/>
+                <TextBlock Text="{Binding BadgeText}" Style="{StaticResource SourceBadgeText}"/>
             </Border>
             <!-- ⇄ switch button — visible only for Both+Estimated -->
             <Button Content="⇄"

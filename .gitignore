@@ -323,6 +323,9 @@ __pycache__/
 # tools/**
 # !tools/packages.config
 
+# Developer-only tools (not part of the distributed app)
+tools/
+
 # Tabs Studio
 *.tss
 

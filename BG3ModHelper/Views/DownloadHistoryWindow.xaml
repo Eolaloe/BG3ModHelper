@@ -137,14 +137,10 @@
 
                     <!-- source badge -->
                     <Border Grid.Column="5"
-                            MinWidth="46"
-                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Background="{Binding SourceBadgeColor}"
-                            CornerRadius="3" Padding="6,2">
+                            Style="{StaticResource SourceBadgeBorder}"
+                            Background="{Binding SourceBadgeColor}">
                         <TextBlock Text="{Binding SourceDisplay}"
-                                   Foreground="White"
-                                   FontSize="10" FontWeight="SemiBold"
-                                   TextAlignment="Center"/>
+                                   Style="{StaticResource SourceBadgeText}"/>
                     </Border>
 
                         <!-- status -->
@@ -215,16 +211,16 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Grid Margin="12">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- column header — right padding 25px (8 base + 17 scrollbar) -->
+        <!-- column header -->
         <Border Grid.Row="0"
-                BorderBrush="#e0e0e0" BorderThickness="1,1,1,0"
+                BorderBrush="#e0e0e0" BorderThickness="0,0,0,1"
                 Background="#f8f8f8" Padding="8,6,25,6">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -236,25 +232,23 @@
                     <ColumnDefinition Width="80"/>
                     <ColumnDefinition Width="60"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Date"    Style="{StaticResource ColHeader}"/>
-                <TextBlock Grid.Column="1" Text="Name"    Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="0" Text="Date"   Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="1" Text="Name"   Style="{StaticResource ColHeader}"/>
                 <TextBlock Grid.Column="2" Grid.ColumnSpan="3" Text="Version"
                            Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="5" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="6" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="5" Text="Source" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="6" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
             </Grid>
         </Border>
 
         <!-- list -->
-        <Border Grid.Row="1" BorderBrush="#e0e0e0" BorderThickness="1,0,1,1">
-            <ScrollViewer VerticalScrollBarVisibility="Visible">
-                <ItemsControl ItemsSource="{Binding Entries}"/>
-            </ScrollViewer>
-        </Border>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible">
+            <ItemsControl ItemsSource="{Binding Entries}"/>
+        </ScrollViewer>
 
         <!-- footer -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,10,0,0">
+                    HorizontalAlignment="Right" Margin="16,8,16,12">
             <TextBlock VerticalAlignment="Center" Margin="0,0,12,0"
                        Foreground="#888888" FontSize="11">
                 <Run Text="{Binding Entries.Count, Mode=OneWay}"/>

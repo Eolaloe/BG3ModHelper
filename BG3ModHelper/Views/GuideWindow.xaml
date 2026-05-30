@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip">
 
-    <Grid Margin="16">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -16,10 +16,11 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="GuidePanel"
                         TextBlock.FontFamily="Segoe UI"
-                        TextBlock.FontSize="13"/>
+                        TextBlock.FontSize="13"
+                        Margin="16,16,16,8"/>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="16,8,16,12">
             <Button Content="Translate"
                     Width="80" Padding="0,5" Margin="0,0,8,0"
                     Click="Translate_Click"/>

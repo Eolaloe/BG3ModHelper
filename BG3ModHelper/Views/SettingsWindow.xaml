@@ -328,7 +328,7 @@
                                 <Run Text="GPL v3.0"/>
                             </Hyperlink>
                             <Run Text=" — "/>
-                            <Hyperlink NavigateUri="https://github.com/Eolaloe/BG3ModHelper/blob/main/THIRD_PARTY_LICENSES.md"
+                            <Hyperlink NavigateUri="https://github.com/Eolaloe/BG3ModHelper/blob/master/THIRD_PARTY_LICENSES.md"
                                        RequestNavigate="Hyperlink_RequestNavigate">
                                 <Run Text="Third-party licenses"/>
                             </Hyperlink>

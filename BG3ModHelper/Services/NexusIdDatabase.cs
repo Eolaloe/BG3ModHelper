@@ -10,10 +10,14 @@ namespace BG3ModHelper.Services;
 /// Manages the community Nexus mod database (v1.5 structure).
 ///
 /// DB structure (GitHub):
-///   { "modId": { modName, uploadedBy, modId, paks: [{ fileName, version, pakFileName, fileId, uuid }] } }
+///   {
+///     "_removed": [404, 999, ...],   // nexusModIds deleted/hidden on Nexus — skipped during indexing
+///     "modId": { modName, uploadedBy, modId, paks: [{ fileName, version, pakFileName, fileId, uuid }] }
+///   }
 ///
 /// In-memory index:
 ///   pakFileName → List&lt;PakLookupEntry&gt; (O(1) lookup)
+///   _removedModIds → HashSet&lt;int&gt; for O(1) removal check
 ///
 /// Update check flow:
 ///   pakFileName → DB lookup → version/fileId (no API calls)
@@ -31,6 +35,9 @@ public class NexusIdDatabase
     // In-memory index: pakFileName (no extension, lowercase) → entries
     private Dictionary<string, List<PakLookupEntry>> _pakIndex = new();
 
+    // Nexus mod IDs known to be deleted or hidden — populated from DB "_removed" list
+    private HashSet<int> _removedModIds = new();
+
 
 
     /// <summary>Load DB from cache / GitHub (sync if stale).</summary>
@@ -40,6 +47,13 @@ public class NexusIdDatabase
     }
 
     // === Lookup ===
+
+    /// <summary>
+    /// Returns <c>true</c> when this mod ID is in the DB's <c>_removed</c> list,
+    /// meaning it has been deleted or hidden on Nexus Mods.
+    /// Use this to suppress stale cached NexusModIds.
+    /// </summary>
+    public bool IsRemovedOnNexus(int modId) => _removedModIds.Contains(modId);
 
     /// <summary>
     /// Looks up pak entries by pakFileName (without extension).
@@ -74,6 +88,19 @@ public class NexusIdDatabase
     }
 
     /// <summary>
+    /// Returns all pak entries for a given Nexus mod ID, ordered by NexusFileId descending
+    /// (latest file first). Used when the user has manually supplied a mod ID via UserModLinkStore.
+    /// </summary>
+    public List<PakLookupEntry> LookupByModId(int nexusModId)
+    {
+        return _pakIndex.Values
+            .SelectMany(e => e)
+            .Where(e => e.NexusModId == nexusModId)
+            .OrderByDescending(e => e.NexusFileId)
+            .ToList();
+    }
+
+    /// <summary>
     /// Returns the NexusModId if all matching entries share the same modId, otherwise null.
     /// Use this for platform classification when exact file disambiguation is not needed.
     /// </summary>
@@ -83,6 +110,51 @@ public class NexusIdDatabase
         if (entries.Count == 0) return null;
         var firstId = entries[0].NexusModId;
         return entries.All(e => e.NexusModId == firstId) ? firstId : null;
+    }
+
+    /// <summary>
+    /// Ambiguous-pak fallback: when multiple mod IDs share the same pak filename,
+    /// narrow candidates to those whose <c>nexusUploadedBy</c> fuzzy-matches the
+    /// installed mod's author (from meta.lsx).
+    /// Returns the shared mod ID if the filtered set is unambiguous, otherwise null.
+    ///
+    /// Uses <see cref="AuthorMatcher.IsMatch"/> — handles parenthetical notes,
+    /// multi-author strings, case differences, and substring containment.
+    /// </summary>
+    public int? LookupByPakAndAuthor(string pakFileName, string? author)
+    {
+        if (string.IsNullOrWhiteSpace(author) || author == "—") return null;
+
+        var filtered = LookupByPakFileName(pakFileName)
+            .Where(e => AuthorMatcher.IsMatch(e.NexusUploadedBy, author))
+            .ToList();
+
+        if (filtered.Count == 0) return null;
+        var firstId = filtered[0].NexusModId;
+        return filtered.All(e => e.NexusModId == firstId) ? firstId : null;
+    }
+
+    /// <summary>
+    /// Ambiguous-pak fallback: narrows candidates by fuzzy-comparing the meta.lsx module
+    /// name against <c>nexusModName</c> using <see cref="ModNameMatcher"/>.
+    ///
+    /// Handles CamelCase vs spaced titles, parenthetical suffixes, and partial containment:
+    ///   "CompatibilityFramework"  ≈ "Compatibility Framework"   (compact-exact)
+    ///   "ImprovedUI"              ≈ "Improved UI Assets"         (containment)
+    ///   "CustomHotbar"            ≈ "Custom Hotbar Revised"      (token overlap)
+    /// </summary>
+    public int? LookupByPakAndModName(string pakFileName, string? metaModuleName)
+    {
+        if (string.IsNullOrWhiteSpace(metaModuleName)) return null;
+        if (ModNameMatcher.Compact(metaModuleName).Length < 5) return null; // too short
+
+        var filtered = LookupByPakFileName(pakFileName)
+            .Where(e => ModNameMatcher.IsMatch(metaModuleName, e.NexusModName))
+            .ToList();
+
+        if (filtered.Count == 0) return null;
+        var firstId = filtered[0].NexusModId;
+        return filtered.All(e => e.NexusModId == firstId) ? firstId : null;
     }
 
     // === Contribute ===
@@ -188,17 +260,28 @@ public class NexusIdDatabase
 
     private void BuildIndex(string json)
     {
-        // DB structure: { "modId": { modName, uploadedBy, modId, paks: [...] } }
+        // DB structure: { "_removed": [...], "modId": { modName, uploadedBy, modId, paks: [...] } }
         var raw = JObject.Parse(json);
-        var index = new Dictionary<string, List<PakLookupEntry>>();
+        var index   = new Dictionary<string, List<PakLookupEntry>>();
+        var removed = new HashSet<int>();
+
+        // Parse _removed list: mod IDs deleted or hidden on Nexus since last DB update
+        if (raw["_removed"] is JArray removedArr)
+            foreach (var token in removedArr)
+            {
+                var rid = token.Value<int?>();
+                if (rid.HasValue) removed.Add(rid.Value);
+            }
 
         foreach (var prop in raw.Properties())
         {
-            if (prop.Name.StartsWith("_")) continue; // skip metadata keys
+            if (prop.Name.StartsWith("_")) continue; // skip metadata keys (_removed, _meta, etc.)
             var mod = prop.Value;
             if (mod == null) continue;
 
             var modId      = mod["nexusModId"]?.Value<int>() ?? 0;
+            if (removed.Contains(modId)) continue; // deleted/hidden on Nexus — exclude from index
+
             var modName    = mod["nexusModName"]?.Value<string>() ?? "";
             var uploadedBy = mod["nexusUploadedBy"]?.Value<string>() ?? "";
             var paks       = mod["paks"] as JArray;
@@ -231,7 +314,10 @@ public class NexusIdDatabase
             }
         }
 
-        _pakIndex = index;
+        _pakIndex      = index;
+        _removedModIds = removed;
+        if (removed.Count > 0)
+            Logger.Info($"NexusIdDatabase: {removed.Count} removed/hidden mod ID(s) excluded from index");
     }
 
     private static string NormalizeKey(string pakFileName) =>

@@ -24,7 +24,8 @@ public static class UpdateChecker
         NexusIdDatabase?    nexusDb,
         ModFileIdStore?     fileIdStore,
         bool                nexusIsPremium,
-        IProgress<int>?     progress = null)
+        IProgress<int>?     progress      = null,
+        UserModLinkStore?   userLinkStore = null)
     {
         // === Nexus + mod.io: run pre-fetch in parallel ===
         // updated.json (1 call) and mod.io cache refresh are independent — run concurrently.
@@ -91,6 +92,18 @@ public static class UpdateChecker
                         dbEntries = nexusDb.LookupByModIdAndFileName(stored.NexusModId, stored.NexusFileName);
                 }
 
+                // Case 3 fallback: user manually linked this pak to a Nexus mod ID
+                if (dbEntries.Count == 0 && userLinkStore != null)
+                {
+                    var userModId = userLinkStore.GetNexusModId(mod.PakFileName);
+                    if (userModId.HasValue)
+                    {
+                        dbEntries = nexusDb.LookupByModId(userModId.Value);
+                        if (dbEntries.Count > 0)
+                            Logger.Info($"UpdateChecker: [{mod.MetaModuleName}] resolved via user link → Nexus mod {userModId.Value}");
+                    }
+                }
+
                 // Resolve conflict: uuid match → fileIdStore modId match → skip
                 var dbEntry = dbEntries.Count == 1
                     ? dbEntries[0]
@@ -103,6 +116,18 @@ public static class UpdateChecker
                     var stored = fileIdStore.GetEntry(mod.MetaUuid);
                     if (stored != null && stored.NexusModId != 0)
                         dbEntry = dbEntries.FirstOrDefault(e => e.NexusModId == stored.NexusModId);
+                }
+
+                // Upgrade to latest fileId for the resolved modId
+                // (same modId may have multiple entries: old archived + new version)
+                if (dbEntry != null && dbEntries.Count > 1)
+                {
+                    var latest = dbEntries
+                        .Where(e => e.NexusModId == dbEntry.NexusModId)
+                        .OrderByDescending(e => e.NexusFileId)
+                        .FirstOrDefault();
+                    if (latest != null)
+                        dbEntry = latest;
                 }
 
                 if (dbEntries.Count == 0)
@@ -252,15 +277,56 @@ public static class UpdateChecker
         var c = Normalize(candidate);
         var v = Normalize(current);
 
-        var cOk = Version.TryParse(c, out var cv);
-        var vOk = Version.TryParse(v, out var vv);
+        // Extract numeric base from candidate (strips any suffix: "-1", "A", "-kr-add", etc.)
+        var cBase    = ExtractNumericBase(c);
+        var hasSuffix = !string.Equals(c, cBase, StringComparison.OrdinalIgnoreCase);
 
-        if (cOk && vOk)  return cv > vv;
-        if (cOk && !vOk) return true;   // candidate is a proper version, current isn't
-        if (!cOk && vOk) return false;  // "1" vs "1.0.0.1" — candidate not parseable, can't be newer
+        // Normalize both sides to 4-part Version for comparison
+        var cVer = ToFourPart(cBase);
+        var vVer = ToFourPart(v);
 
-        // both unparseable: fall back to string compare
+        if (cVer != null && vVer != null)
+        {
+            if (cVer > vVer) return true;   // candidate base is newer
+            if (cVer < vVer) return false;  // candidate base is older
+            // bases equal — any suffix means potential revision → treat as update candidate
+            return hasSuffix;
+        }
+
+        // fallback: string compare (both sides unparseable)
         return !string.Equals(c, v, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Extracts the leading numeric (digits and dots) portion of a version string.
+    /// "1.0.16-2" → "1.0.16",  "2.2A" → "2.2",  "1.1.0.0-kr" → "1.1.0.0"
+    /// </summary>
+    private static string ExtractNumericBase(string ver)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in ver)
+        {
+            if (char.IsDigit(ch) || ch == '.') sb.Append(ch);
+            else break;
+        }
+        return sb.ToString().TrimEnd('.');
+    }
+
+    /// <summary>
+    /// Parses a version string and pads to exactly 4 parts (major.minor.build.revision).
+    /// "1.0" → 1.0.0.0,  "1.0.16" → 1.0.16.0,  "1.1.0.0" → 1.1.0.0
+    /// Returns null if unparseable.
+    /// </summary>
+    private static Version? ToFourPart(string ver)
+    {
+        if (string.IsNullOrWhiteSpace(ver)) return null;
+        if (!Version.TryParse(ver, out var v)) return null;
+        return new Version(
+            Math.Max(v.Major,    0),
+            Math.Max(v.Minor,    0),
+            Math.Max(v.Build,    0),
+            Math.Max(v.Revision, 0)
+        );
     }
 
     private static string Normalize(string ver) =>

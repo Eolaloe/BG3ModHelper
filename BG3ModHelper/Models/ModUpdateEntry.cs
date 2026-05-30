@@ -31,7 +31,10 @@ public class ModUpdateEntry
     public string Changelog        { get; set; } = "";  // Nexus changelog
     public string ModioChangelog   { get; set; } = "";  // mod.io changelog
 
-    public UpdateStatus Status { get; set; } = UpdateStatus.Pending;
+    public UpdateStatus Status   { get; set; } = UpdateStatus.Pending;
+
+    /// <summary>True when the mod is in the active load order (modsettings.lsx).</summary>
+    public bool IsActive { get; set; } = true;
 }
 
 public enum UpdateStatus

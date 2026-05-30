@@ -50,20 +50,49 @@ public class UpdateNotificationViewModel : ViewModelBase
 
         Entries = new ObservableCollection<UpdateEntryViewModel>(GroupEntries(allVms));
 
+        // Split into active / inactive sections
+        ActiveEntries   = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => e.IsActive));
+        InactiveEntries = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => !e.IsActive));
+
+        // Inactive entries are deselected by default — user opts in explicitly
+        foreach (var e in InactiveEntries)
+            e.IsSelected = false;
+
+        // Subscribe so master-checkbox states stay in sync as rows are toggled
+        foreach (var vm in ActiveEntries)
+            vm.PropertyChanged += OnEntrySelectionChanged;
+        foreach (var vm in InactiveEntries)
+            vm.PropertyChanged += OnEntrySelectionChanged;
+
+        ActiveEntriesView   = CollectionViewSource.GetDefaultView(ActiveEntries);
+        InactiveEntriesView = CollectionViewSource.GetDefaultView(InactiveEntries);
+
+        // Keep EntriesView for backward compat (used by download/skip logic)
         EntriesView = CollectionViewSource.GetDefaultView(Entries);
-        // Live sorting: re-sort automatically when any sort-relevant property changes
-        if (EntriesView is System.ComponentModel.ICollectionViewLiveShaping liveView)
+
+        foreach (var view in new[] { ActiveEntriesView, InactiveEntriesView, EntriesView })
         {
-            liveView.IsLiveSorting = true;
-            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortPreserveOrder));
-            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortName));
-            liveView.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortSourceOrder));
+            if (view is System.ComponentModel.ICollectionViewLiveShaping lv)
+            {
+                lv.IsLiveSorting = true;
+                lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortPreserveOrder));
+                lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortName));
+                lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortSourceOrder));
+            }
         }
-        SortByNameCommand    = new RelayCommand(() => ToggleSort(SortCol.Name));
-        SortBySourceCommand  = new RelayCommand(() => ToggleSort(SortCol.Source));
-        SortByVersionCommand = new RelayCommand(() => ToggleSort(SortCol.Preserve));
+
+        SortActiveByNameCommand   = new RelayCommand(() => ToggleSortActive(SortCol.Name));
+        SortActiveBySourceCommand = new RelayCommand(() => ToggleSortActive(SortCol.Source));
+        SortActiveByLockCommand   = new RelayCommand(() => ToggleSortActive(SortCol.Lock));
+        SortInactiveByNameCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Name));
+        SortInactiveBySourceCommand = new RelayCommand(() => ToggleSortInactive(SortCol.Source));
+        SortInactiveByLockCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Lock));
         ApplySort();
 
+        SelectAllActiveCommand   = new RelayCommand(() => SetSectionSelected(active: true,  selected: true));
+        DeselectAllActiveCommand = new RelayCommand(() => SetSectionSelected(active: true,  selected: false));
+        SelectAllInactiveCommand   = new RelayCommand(() => SetSectionSelected(active: false, selected: true));
+        DeselectAllInactiveCommand = new RelayCommand(() => SetSectionSelected(active: false, selected: false));
         SelectAllCommand        = new RelayCommand(() => SetAllSelected(true));
         DeselectAllCommand      = new RelayCommand(() => SetAllSelected(false));
         DownloadSelectedCommand = new RelayCommand(
@@ -86,7 +115,74 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Properties ===
 
-    public ObservableCollection<UpdateEntryViewModel> Entries { get; }
+    public ObservableCollection<UpdateEntryViewModel> Entries         { get; }
+    public ObservableCollection<UpdateEntryViewModel> ActiveEntries   { get; }
+    public ObservableCollection<UpdateEntryViewModel> InactiveEntries { get; }
+
+    public string ActiveSectionHeader   => $"Active Mods ({ActiveEntries.Count})";
+    public string InactiveSectionHeader => $"Inactive Mods ({InactiveEntries.Count})";
+
+    // Suppresses per-entry PropertyChanged notifications while a mass select/deselect loop is running.
+    // Prevents intermediate null states from corrupting the IsThreeState click cycle via binding feedback.
+    private bool _suppressMasterNotify;
+
+    /// <summary>
+    /// Tri-state master checkbox for the Active section.
+    /// null = mixed, true = all selected, false = none selected.
+    /// </summary>
+    public bool? ActiveMasterChecked
+    {
+        get
+        {
+            var queued = ActiveEntries.Where(e => e.CanBeQueued).ToList();
+            if (queued.Count == 0) return false;
+            var selected = queued.Count(e => e.IsSelected);
+            return selected == 0 ? false : selected == queued.Count ? true : (bool?)null;
+        }
+        set
+        {
+            // IsThreeState cycle: false→true→null→false.
+            // Clicking from true passes null (not false), so treat null as deselect.
+            SetSectionSelected(active: true, selected: value == true);
+        }
+    }
+
+    /// <summary>
+    /// Tri-state master checkbox for the Inactive section.
+    /// null = mixed, true = all selected, false = none selected.
+    /// </summary>
+    public bool? InactiveMasterChecked
+    {
+        get
+        {
+            var queued = InactiveEntries.Where(e => e.CanBeQueued).ToList();
+            if (queued.Count == 0) return false;
+            var selected = queued.Count(e => e.IsSelected);
+            return selected == 0 ? false : selected == queued.Count ? true : (bool?)null;
+        }
+        set
+        {
+            // IsThreeState cycle: false→true→null→false.
+            // Clicking from true passes null (not false), so treat null as deselect.
+            SetSectionSelected(active: false, selected: value == true);
+        }
+    }
+
+    private void OnEntrySelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(UpdateEntryViewModel.IsSelected)) return;
+        if (_suppressMasterNotify) return;
+        if (sender is UpdateEntryViewModel vm)
+        {
+            if (ActiveEntries.Contains(vm))
+                OnPropertyChanged(nameof(ActiveMasterChecked));
+            else
+                OnPropertyChanged(nameof(InactiveMasterChecked));
+        }
+    }
+
+    public ICollectionView ActiveEntriesView   { get; }
+    public ICollectionView InactiveEntriesView { get; }
 
     private string _titleText = "";
     public string TitleText
@@ -154,13 +250,17 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Commands ===
 
-    public RelayCommand SelectAllCommand        { get; }
-    public RelayCommand DeselectAllCommand      { get; }
-    public RelayCommand DownloadSelectedCommand { get; }
-    public RelayCommand CloseCommand            { get; }
-    public RelayCommand RefreshCommand          { get; }
-    public RelayCommand CloseWebViewCommand     { get; }
-    public RelayCommand SkipCommand             { get; }
+    public RelayCommand SelectAllActiveCommand     { get; }
+    public RelayCommand DeselectAllActiveCommand   { get; }
+    public RelayCommand SelectAllInactiveCommand   { get; }
+    public RelayCommand DeselectAllInactiveCommand { get; }
+    public RelayCommand SelectAllCommand           { get; }
+    public RelayCommand DeselectAllCommand         { get; }
+    public RelayCommand DownloadSelectedCommand    { get; }
+    public RelayCommand CloseCommand               { get; }
+    public RelayCommand RefreshCommand             { get; }
+    public RelayCommand CloseWebViewCommand        { get; }
+    public RelayCommand SkipCommand                { get; }
 
     public event Action?                       CloseRequested;
     public event Action?                       LoginRequired;
@@ -168,49 +268,113 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Sort ===
 
-    private enum SortCol { Name, Source, Preserve }
-    private SortCol _sortColumn    = SortCol.Name;
-    private bool    _sortAscending = true;
+    private enum SortCol { Name, Source, Lock }
+
+    // Active section sort state (independent from Inactive)
+    private SortCol _activeSortColumn    = SortCol.Name;
+    private bool    _activeSortAscending = true;
+
+    // Inactive section sort state (independent from Active)
+    private SortCol _inactiveSortColumn    = SortCol.Name;
+    private bool    _inactiveSortAscending = true;
 
     public ICollectionView EntriesView { get; }
 
-    public string NameSortHeader    => _sortColumn == SortCol.Name    ? (_sortAscending ? "Name ▲"    : "Name ▼")    : "Name ⇅";
-    public string SourceSortHeader  => _sortColumn == SortCol.Source  ? (_sortAscending ? "Source ▲"  : "Source ▼")  : "Source ⇅";
-    public string VersionSortHeader => _sortColumn == SortCol.Preserve ? (_sortAscending ? "Version ▲" : "Version ▼") : "Version ⇅";
+    // ── Active header texts ──────────────────────────────────────────────────
+    public string ActiveNameSortHeader   => _activeSortColumn == SortCol.Name   ? (_activeSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
+    public string ActiveSourceSortHeader => _activeSortColumn == SortCol.Source ? (_activeSortAscending ? "Source ↑" : "Source ↓") : "Source ⇅";
+    public string ActiveLockSortHeader   => _activeSortColumn == SortCol.Lock   ? (_activeSortAscending ? "↑" : "↓") : "⇅";
 
-    public RelayCommand SortByNameCommand    { get; }
-    public RelayCommand SortBySourceCommand  { get; }
-    public RelayCommand SortByVersionCommand { get; }
+    // ── Inactive header texts ────────────────────────────────────────────────
+    public string InactiveNameSortHeader   => _inactiveSortColumn == SortCol.Name   ? (_inactiveSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
+    public string InactiveSourceSortHeader => _inactiveSortColumn == SortCol.Source ? (_inactiveSortAscending ? "Source ↑" : "Source ↓") : "Source ⇅";
+    public string InactiveLockSortHeader   => _inactiveSortColumn == SortCol.Lock   ? (_inactiveSortAscending ? "↑" : "↓") : "⇅";
 
-    private void ToggleSort(SortCol col)
+    // Keep old names as pass-through so any lingering bindings don't crash
+    public string NameSortHeader   => ActiveNameSortHeader;
+    public string SourceSortHeader => ActiveSourceSortHeader;
+
+    // ── Active commands ──────────────────────────────────────────────────────
+    public RelayCommand SortActiveByNameCommand   { get; }
+    public RelayCommand SortActiveBySourceCommand { get; }
+    public RelayCommand SortActiveByLockCommand   { get; }
+
+    // ── Inactive commands ────────────────────────────────────────────────────
+    public RelayCommand SortInactiveByNameCommand   { get; }
+    public RelayCommand SortInactiveBySourceCommand { get; }
+    public RelayCommand SortInactiveByLockCommand   { get; }
+
+    // Kept for backward compat
+    public RelayCommand SortByNameCommand   => SortActiveByNameCommand;
+    public RelayCommand SortBySourceCommand => SortActiveBySourceCommand;
+
+    private void ToggleSortActive(SortCol col)
     {
-        if (_sortColumn == col) _sortAscending = !_sortAscending;
-        else { _sortColumn = col; _sortAscending = true; }
-        ApplySort();
-        OnPropertyChanged(nameof(NameSortHeader));
-        OnPropertyChanged(nameof(SourceSortHeader));
-        OnPropertyChanged(nameof(VersionSortHeader));
+        if (_activeSortColumn == col) _activeSortAscending = !_activeSortAscending;
+        else { _activeSortColumn = col; _activeSortAscending = true; }
+        ApplySortToView(ActiveEntriesView, _activeSortColumn, _activeSortAscending);
+        OnPropertyChanged(nameof(ActiveNameSortHeader));
+        OnPropertyChanged(nameof(ActiveSourceSortHeader));
+        OnPropertyChanged(nameof(ActiveLockSortHeader));
+    }
+
+    private void ToggleSortInactive(SortCol col)
+    {
+        if (_inactiveSortColumn == col) _inactiveSortAscending = !_inactiveSortAscending;
+        else { _inactiveSortColumn = col; _inactiveSortAscending = true; }
+        ApplySortToView(InactiveEntriesView, _inactiveSortColumn, _inactiveSortAscending);
+        OnPropertyChanged(nameof(InactiveNameSortHeader));
+        OnPropertyChanged(nameof(InactiveSourceSortHeader));
+        OnPropertyChanged(nameof(InactiveLockSortHeader));
+    }
+
+    private static void ApplySortToView(ICollectionView view, SortCol col, bool ascending)
+    {
+        var dir = ascending ? ListSortDirection.Ascending : ListSortDirection.Descending;
+        view.SortDescriptions.Clear();
+        switch (col)
+        {
+            case SortCol.Name:
+                view.SortDescriptions.Add(new SortDescription("SortName", dir));
+                break;
+            case SortCol.Source:
+                view.SortDescriptions.Add(new SortDescription("SortSourceOrder", dir));
+                view.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
+                break;
+            case SortCol.Lock:
+                view.SortDescriptions.Add(new SortDescription("SortPreserveOrder", dir));
+                view.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
+                break;
+        }
     }
 
     private void ApplySort()
     {
-        EntriesView.SortDescriptions.Clear();
-        var dir = _sortAscending ? ListSortDirection.Ascending : ListSortDirection.Descending;
-        switch (_sortColumn)
+        // Apply initial sort to both sections independently (called once at construction)
+        ApplySortToView(ActiveEntriesView,   _activeSortColumn,   _activeSortAscending);
+        ApplySortToView(InactiveEntriesView, _inactiveSortColumn, _inactiveSortAscending);
+        // EntriesView mirrors Active sort for legacy download/skip logic
+        ApplySortToView(EntriesView,         _activeSortColumn,   _activeSortAscending);
+    }
+
+    private void SetSectionSelected(bool active, bool selected)
+    {
+        // Suppress per-entry notifications during the loop to prevent intermediate null states
+        // from corrupting the IsThreeState click cycle via binding feedback.
+        _suppressMasterNotify = true;
+        try
         {
-            case SortCol.Name:
-                EntriesView.SortDescriptions.Add(new SortDescription("SortName", dir));
-                break;
-            case SortCol.Source:
-                EntriesView.SortDescriptions.Add(new SortDescription("SortSourceOrder", dir));
-                EntriesView.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
-                break;
-            case SortCol.Preserve:
-                // Ascending = preserved (🔒) first, Descending = normal first
-                EntriesView.SortDescriptions.Add(new SortDescription("SortPreserveOrder", dir));
-                EntriesView.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
-                break;
+            var source = active ? ActiveEntries : InactiveEntries;
+            foreach (var e in source)
+                e.IsSelected = selected;
         }
+        finally
+        {
+            _suppressMasterNotify = false;
+        }
+
+        // Fire exactly once after all entries are updated
+        OnPropertyChanged(active ? nameof(ActiveMasterChecked) : nameof(InactiveMasterChecked));
     }
 
     // === WebView slide state ===

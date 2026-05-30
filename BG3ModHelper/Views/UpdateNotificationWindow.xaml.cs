@@ -28,6 +28,8 @@ public partial class UpdateNotificationWindow : Window
         UpdateNexusLoginButton(WebViewHelper.IsLoggedIn());
         WebViewHelper.LoginStateChanged += OnLoginStateChanged;
         Loaded += async (_, _) => await InitWebViewAsync();
+        Loaded += (_, _) => SyncHeaderPadding();
+        SizeChanged += (_, _) => SyncHeaderPadding();
         SourceInitialized += (_, _) => PositionWindow();
         Closed += (_, _) =>
         {
@@ -37,14 +39,37 @@ public partial class UpdateNotificationWindow : Window
         };
     }
 
+    /// <summary>
+    /// Syncs header Border right-padding to the ScrollViewer's actual scrollbar width
+    /// so that the * (Name) column resolves to the same width in both header and data rows.
+    /// Called on Loaded and SizeChanged to handle DPI and window resize.
+    /// </summary>
+    private void SyncHeaderPadding()
+    {
+        SyncHeader(ActiveHeaderBorder,   ActiveScroller);
+        SyncHeader(InactiveHeaderBorder, InactiveScroller);
+    }
+
+    private static void SyncHeader(System.Windows.Controls.Border header,
+                                    System.Windows.Controls.ScrollViewer scroller)
+    {
+        // scrollbarWidth = actual width taken by the vertical scrollbar
+        var scrollbarWidth = scroller.ActualWidth - scroller.ViewportWidth;
+        if (scrollbarWidth < 0) scrollbarWidth = 0;
+        // Match: left=8, right=8(data padding)+scrollbarWidth
+        header.Padding = new Thickness(8, 6, 8 + scrollbarWidth, 6);
+    }
+
     private void PositionWindow()
     {
-        // offset 400px left so the full width (main + side panel) centers when side panel opens
+        // Offset left by half the window width so that when the side panel opens (doubling width),
+        // the combined window centers on screen. Uses this.Width so it stays correct
+        // regardless of the window's configured width.
         var workArea = SystemParameters.WorkArea;
         var centerX  = workArea.Left + workArea.Width  / 2.0;
         var centerY  = workArea.Top  + workArea.Height / 2.0;
 
-        Left = centerX - this.Width  / 2.0 - 400;
+        Left = centerX - this.Width / 2.0 - this.Width / 2.0;
         Top  = centerY - this.Height / 2.0;
     }
 

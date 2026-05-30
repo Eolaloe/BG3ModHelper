@@ -73,10 +73,16 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
     // Sort keys for ICollectionView SortDescriptions
     public string SortName => !string.IsNullOrEmpty(PlatformModName) ? PlatformModName : LocalModName;
+    /// <summary>
+    /// Sort key matching InstalledMods badge order:
+    /// Nexus only=0, mod.io only=1, Both=2, NexusUnregistered/Others=3
+    /// Uses source presence (not active download source) so "Both" mods group together
+    /// regardless of which source is currently selected.
+    /// </summary>
     public int SortSourceOrder =>
-        IsNexusUnregistered                ? 3 :
-        ActiveSource == UpdateSource.MODIO ? 0 :
-        CanAutoDownload                    ? 1 : 2;
+        HasNexus &&  HasModio              ? 2 :
+        HasNexus && !HasModio              ? (IsNexusUnregistered ? 3 : 0) :
+        HasModio && !HasNexus              ? 1 : 3;
     /// <summary>0 = preserved (locked), 1 = normal. Used for the Version column sort.</summary>
     public int SortPreserveOrder => IsPreserved ? 0 : 1;
 
@@ -144,6 +150,8 @@ public partial class UpdateEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsNexusUnregistered));
         OnPropertyChanged(nameof(SourceBadge));
         OnPropertyChanged(nameof(SourceBadgeColor));
+        OnPropertyChanged(nameof(BackSourceBadge));
+        OnPropertyChanged(nameof(BackSourceBadgeColor));
         OnPropertyChanged(nameof(ActionLabel));
         OnPropertyChanged(nameof(ActionStyle));
         OnPropertyChanged(nameof(ActivePageUrl));
@@ -185,6 +193,8 @@ public partial class UpdateEntryViewModel : ViewModelBase
             SetField(ref _activeSource, value);
             OnPropertyChanged(nameof(SourceBadge));
             OnPropertyChanged(nameof(SourceBadgeColor));
+            OnPropertyChanged(nameof(BackSourceBadge));
+            OnPropertyChanged(nameof(BackSourceBadgeColor));
             OnPropertyChanged(nameof(ActionLabel));
             OnPropertyChanged(nameof(ActionStyle));
             OnPropertyChanged(nameof(CanAutoDownload));
@@ -200,8 +210,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         }
     }
 
-    public bool HasModio => _entry.AvailableSources.Contains(UpdateSource.MODIO);
-    public bool HasNexus => _entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
+    public bool HasModio  => _entry.AvailableSources.Contains(UpdateSource.MODIO);
+    public bool HasNexus  => _entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
+    public bool IsActive  => _entry.IsActive;
     public bool IsNexusUnregistered =>
         !HasModio && !HasNexus && _entry.NexusModId == null;
 
@@ -217,6 +228,12 @@ public partial class UpdateEntryViewModel : ViewModelBase
     public string SourceBadgeColor =>
         IsNexusUnregistered ? "#888888" :
         ActiveSource == UpdateSource.MODIO ? "#1a7fd4" : "#d98200";
+
+    // ── Back badge (inactive source) — shown only when HasMultipleSources ────
+    public string BackSourceBadge  =>
+        ActiveSource == UpdateSource.MODIO ? "Nexus" : "mod.io";
+    public string BackSourceBadgeColor =>
+        ActiveSource == UpdateSource.MODIO ? "#d98200" : "#1a7fd4";
 
     public bool CanAutoDownload =>
         !IsNexusUnregistered &&
@@ -249,8 +266,8 @@ public partial class UpdateEntryViewModel : ViewModelBase
         Services.PreservedModsStore.Instance.Toggle(UUID);
         if (IsPreserved)
             _isSelected = false;        // lock → deselect
-        else if (CanBeQueued)
-            _isSelected = true;         // unlock → re-select
+        else if (CanBeQueued && IsActive)
+            _isSelected = true;         // unlock → re-select (active only; inactive stays deselected by default)
         OnPropertyChanged(nameof(IsPreserved));
         OnPropertyChanged(nameof(IsSelected));
         OnPropertyChanged(nameof(CanBeQueued));
@@ -321,6 +338,22 @@ public partial class UpdateEntryViewModel : ViewModelBase
         set => SetField(ref _statusText, value);
     }
 
+    /// <summary>
+    /// Size progress shown on the second line during download ("X.X MB / Y.Y MB").
+    /// Empty when not downloading or when file size is unknown.
+    /// </summary>
+    private string _statusProgress = "";
+    public string StatusProgress
+    {
+        get => _statusProgress;
+        set
+        {
+            if (SetField(ref _statusProgress, value))
+                OnPropertyChanged(nameof(HasStatusProgress));
+        }
+    }
+    public bool HasStatusProgress => !string.IsNullOrEmpty(_statusProgress);
+
     public string StatusColor => Status switch
     {
         UpdateStatus.Updated     => "#4caf50",
@@ -378,8 +411,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         _downloadCts = new CancellationTokenSource();
         var ct = _downloadCts.Token;
 
-        Status     = UpdateStatus.Downloading;
-        StatusText = "Downloading...";
+        Status         = UpdateStatus.Downloading;
+        StatusText     = "Download";
+        StatusProgress = "";
 
         try
         {
@@ -401,9 +435,28 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
             var progress = new Progress<DownloadProgress>(p =>
             {
-                StatusText = p.Text;
                 if (p.Text.StartsWith("Extracting") || p.Text.StartsWith("Applying") || p.Text.StartsWith("Backing"))
-                    Status = UpdateStatus.Applying;
+                {
+                    // Phase transition: clear size progress, show step label
+                    Status         = UpdateStatus.Applying;
+                    StatusText     = p.Text switch
+                    {
+                        "Extracting" => "Extract",
+                        "Applying"   => "Apply",
+                        "Backing up" => "Backup",
+                        _            => p.Text
+                    };
+                    StatusProgress = "";
+                }
+                else if (Status == UpdateStatus.Downloading)
+                {
+                    // Byte progress: "X.X MB / Y.Y MB" — show on second line
+                    StatusProgress = p.Text;
+                }
+                else
+                {
+                    StatusText = p.Text;
+                }
                 onProgress?.Invoke(p);
             });
 
@@ -446,8 +499,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
                 _lastInstallResult = result;
             }
 
-            Status     = UpdateStatus.Updated;
-            StatusText = "Updated";
+            Status         = UpdateStatus.Updated;
+            StatusText     = "Updated";
+            StatusProgress = "";
             Logger.Info($"Download complete: {ModName}");
             RecordHistory(success: true);
         }

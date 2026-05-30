@@ -30,6 +30,7 @@ public class MainWindowViewModel : ViewModelBase
     private readonly NexusIdDatabase      _nexusIdDb    = new();
     private readonly ModFileIdStore       _fileIdStore  = new();
     private readonly DownloadHistoryStore _historyStore = new();
+    private readonly UserModLinkStore     _userLinks    = new();
     private          FolderWatcherService? _folderWatcher;
 
     public MainWindowViewModel(Window ownerWindow)
@@ -46,6 +47,7 @@ public class MainWindowViewModel : ViewModelBase
         OpenSettingsCommand      = new RelayCommand(OpenSettings, () => !_isScanning);
         OpenHelpCommand          = new RelayCommand(OpenHelp);
         OpenHistoryCommand       = new RelayCommand(OpenHistory);
+        OpenInstalledModsCommand = new RelayCommand(OpenInstalledMods);
         EnterCompactCommand      = new RelayCommand(EnterCompact);
         ExitCompactCommand       = new RelayCommand(ExitCompact);
         ExitAppCommand           = new RelayCommand(() => System.Windows.Application.Current.Shutdown());
@@ -56,8 +58,7 @@ public class MainWindowViewModel : ViewModelBase
         _fileIdStore.Load();
         _historyStore.Load();
         InitFolderWatcher();
-        _ = _nexusIdDb.InitAsync();
-        _ = RefreshModsAsync();
+        _ = StartupInitAsync();
 
         // Register nxm download handler — must be after _historyStore.Load()
         UnifiedDownloadQueue.Instance.SetNxmHandler(HandleNxmItemAsync);
@@ -198,6 +199,7 @@ public class MainWindowViewModel : ViewModelBase
     public RelayCommand OpenSettingsCommand      { get; }
     public RelayCommand OpenHelpCommand          { get; }
     public RelayCommand OpenHistoryCommand       { get; }
+    public RelayCommand OpenInstalledModsCommand { get; }
     public RelayCommand EnterCompactCommand      { get; }
     public RelayCommand ExitCompactCommand       { get; }
     public RelayCommand ExitAppCommand           { get; }
@@ -257,6 +259,89 @@ public class MainWindowViewModel : ViewModelBase
         AddActivity("BG3MM folder updated: " + dialog.FolderName);
         Logger.Info("BG3MM folder changed to: " + dialog.FolderName);
         _ = RefreshModsAsync();
+    }
+
+    /// <summary>
+    /// Runs the initial scan and DB init concurrently so the UI shows mod count quickly,
+    /// then runs a second NexusModId resolution pass once both are guaranteed ready.
+    /// This avoids the race where the pak scan finishes before the DB ETag response
+    /// arrives, leaving ambiguous pak lookups unresolved.
+    /// </summary>
+    private async Task StartupInitAsync()
+    {
+        // Both run in parallel — scan gives quick mod count, DB init fetches/validates cache
+        await Task.WhenAll(RefreshModsAsync(), _nexusIdDb.InitAsync());
+        // Second pass: fill in NexusModIds that the scan missed because DB wasn't ready yet
+        ApplyNexusIdsFromDb();
+    }
+
+    /// <summary>
+    /// Lightweight post-scan pass: resolves NexusModId for any mods that still have null
+    /// after the main scan.  Safe to call multiple times — skips mods already resolved.
+    /// </summary>
+    private void ApplyNexusIdsFromDb()
+    {
+        if (_installedMods.Count == 0) return;
+        var dbChanged = false;
+
+        // Pre-pass: evict any cached NexusModIds that are now in the DB's _removed list.
+        foreach (var mod in _installedMods)
+        {
+            if (mod.NexusModId.HasValue && _nexusIdDb.IsRemovedOnNexus(mod.NexusModId.Value))
+            {
+                Logger.Info($"NexusIdDatabase: clearing removed mod ID {mod.NexusModId} from {mod.PakFileName}");
+                mod.NexusModId = null;
+                dbChanged = true;
+            }
+        }
+
+        foreach (var mod in _installedMods)
+        {
+            if (mod.NexusModId.HasValue) continue;
+
+            var entry = _nexusIdDb.LookupSingle(mod.PakFileName);
+            if (entry != null)                 { mod.NexusModId = entry.NexusModId; dbChanged = true; continue; }
+
+            var sharedId = _nexusIdDb.LookupUnambiguousModId(mod.PakFileName);
+            if (sharedId.HasValue)             { mod.NexusModId = sharedId;         dbChanged = true; continue; }
+
+            var authorId = _nexusIdDb.LookupByPakAndAuthor(mod.PakFileName, mod.MetaAuthor);
+            if (authorId.HasValue)             { mod.NexusModId = authorId;          dbChanged = true; continue; }
+
+            var modNameId = _nexusIdDb.LookupByPakAndModName(mod.PakFileName, mod.MetaModuleName);
+            if (modNameId.HasValue)            { mod.NexusModId = modNameId;         dbChanged = true; continue; }
+
+            var stored = _fileIdStore.GetEntry(mod.MetaUuid);
+            if (stored?.NexusModId > 0)        { mod.NexusModId = stored.NexusModId; dbChanged = true; }
+        }
+
+        // Cross-pak author correlation: same logic as in RefreshModsAsync — see comment there.
+        var authorKnownIds = _installedMods
+            .Where(m => m.NexusModId.HasValue &&
+                        !string.IsNullOrWhiteSpace(m.MetaAuthor) &&
+                        m.MetaAuthor != "—")
+            .GroupBy(m => m.MetaAuthor!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(m => m.NexusModId!.Value).Distinct().ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var mod in _installedMods)
+        {
+            if (mod.NexusModId.HasValue) continue;
+            if (string.IsNullOrWhiteSpace(mod.MetaAuthor) || mod.MetaAuthor == "—") continue;
+            if (!authorKnownIds.TryGetValue(mod.MetaAuthor, out var knownIds)) continue;
+            if (knownIds.Count != 1) continue;
+            var knownId = knownIds[0];
+            var candidates = _nexusIdDb.LookupByPakFileName(mod.PakFileName);
+            if (candidates.Any(e => e.NexusModId == knownId))
+            {
+                mod.NexusModId = knownId;
+                dbChanged = true;
+            }
+        }
+
+        if (dbChanged) ModScanner.SaveNexusIds(_installedMods);
     }
 
     private void StartCheckUpdates() => _ = CheckUpdatesAsync();
@@ -341,7 +426,15 @@ public class MainWindowViewModel : ViewModelBase
                 _nexusIdDb,
                 _fileIdStore,
                 _settings.NexusIsPremium,
-                progress);
+                progress,
+                _userLinks);
+
+            // Mark active mods based on load order
+            var activeUuids = new HashSet<string>(
+                ModSettingsParser.GetLoadOrder(ModSettingsParser.GetDefaultPath()),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var u in updates)
+                u.IsActive = activeUuids.Contains(u.MetaUuid);
 
             _lastCheck = DateTime.Now;
             _settings.LastCheck = _lastCheck;
@@ -405,7 +498,8 @@ public class MainWindowViewModel : ViewModelBase
                     rModioApi,
                     _nexusIdDb,
                     _fileIdStore,
-                    _settings.NexusIsPremium);
+                    _settings.NexusIsPremium,
+                    userLinkStore: _userLinks);
             }
 
             var notificationVm = new UpdateNotificationViewModel(
@@ -510,6 +604,14 @@ public class MainWindowViewModel : ViewModelBase
     {
         var vm     = new ViewModels.DownloadHistoryViewModel(_historyStore);
         var window = new Views.DownloadHistoryWindow(vm) { Owner = _ownerWindow };
+        window.Show();
+    }
+
+    private async void OpenInstalledMods()
+    {
+        var mods = _installedMods.ToList();  // snapshot — VM ctor runs off UI thread
+        var vm   = await Task.Run(() => new ViewModels.InstalledModsViewModel(mods, _fileIdStore, _nexusIdDb, _userLinks));
+        var window = new Views.InstalledModsWindow(vm) { Owner = _ownerWindow };
         window.Show();
     }
 
@@ -870,6 +972,19 @@ public class MainWindowViewModel : ViewModelBase
 
             // Populate NexusModId from DB for mods that don't have it yet
             var dbChanged = false;
+
+            // Pre-pass: clear any cached NexusModIds that are now known-removed/hidden on Nexus.
+            // Runs before the resolution loop so removed IDs are never re-assigned.
+            foreach (var mod in _installedMods)
+            {
+                if (mod.NexusModId.HasValue && _nexusIdDb.IsRemovedOnNexus(mod.NexusModId.Value))
+                {
+                    Logger.Info($"NexusIdDatabase: clearing removed mod ID {mod.NexusModId} from {mod.PakFileName}");
+                    mod.NexusModId = null;
+                    dbChanged = true;
+                }
+            }
+
             foreach (var mod in _installedMods)
             {
                 if (mod.NexusModId.HasValue) continue;
@@ -889,6 +1004,24 @@ public class MainWindowViewModel : ViewModelBase
                     dbChanged = true;
                     continue;
                 }
+                // Ambiguous modIds: narrow by mod author (filters out noise entries such as
+                // translations or unrelated mods that reuse the same pak filename)
+                var authorModId = _nexusIdDb.LookupByPakAndAuthor(mod.PakFileName, mod.MetaAuthor);
+                if (authorModId.HasValue)
+                {
+                    mod.NexusModId = authorModId;
+                    dbChanged = true;
+                    continue;
+                }
+                // Ambiguous modIds, author didn't match → try normalised module name
+                // ("CompatibilityFramework" ≈ "Compatibility Framework")
+                var modNameModId = _nexusIdDb.LookupByPakAndModName(mod.PakFileName, mod.MetaModuleName);
+                if (modNameModId.HasValue)
+                {
+                    mod.NexusModId = modNameModId;
+                    dbChanged = true;
+                    continue;
+                }
                 // Ambiguous modIds: use fileIdStore if this mod was downloaded through the app
                 var storedEntry = _fileIdStore.GetEntry(mod.MetaUuid);
                 if (storedEntry != null && storedEntry.NexusModId != 0)
@@ -897,6 +1030,36 @@ public class MainWindowViewModel : ViewModelBase
                     dbChanged = true;
                 }
             }
+            // Cross-pak author correlation: if all of an author's already-resolved paks point
+            // to exactly ONE nexus mod ID, and that ID appears among the ambiguous DB candidates
+            // for an unresolved pak by the same author — use it.
+            // This handles load-order-divider paks and similar cases where pak/author/modname
+            // matching alone fails but a sibling pak by the same author is already resolved.
+            var authorKnownIds = _installedMods
+                .Where(m => m.NexusModId.HasValue &&
+                            !string.IsNullOrWhiteSpace(m.MetaAuthor) &&
+                            m.MetaAuthor != "—")
+                .GroupBy(m => m.MetaAuthor!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(m => m.NexusModId!.Value).Distinct().ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var mod in _installedMods)
+            {
+                if (mod.NexusModId.HasValue) continue;
+                if (string.IsNullOrWhiteSpace(mod.MetaAuthor) || mod.MetaAuthor == "—") continue;
+                if (!authorKnownIds.TryGetValue(mod.MetaAuthor, out var knownIds)) continue;
+                if (knownIds.Count != 1) continue; // only if author maps to exactly one known ID
+                var knownId = knownIds[0];
+                var candidates = _nexusIdDb.LookupByPakFileName(mod.PakFileName);
+                if (candidates.Any(e => e.NexusModId == knownId))
+                {
+                    mod.NexusModId = knownId;
+                    dbChanged = true;
+                }
+            }
+
             if (dbChanged) ModScanner.SaveNexusIds(_installedMods);
 
             _installedModsCount = _installedMods.Count;

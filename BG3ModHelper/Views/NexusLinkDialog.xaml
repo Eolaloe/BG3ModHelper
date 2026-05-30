@@ -1,0 +1,102 @@
+<Window x:Class="BG3ModHelper.Views.NexusLinkDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="440"
+        MinWidth="360" MinHeight="180"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        SizeToContent="Height">
+
+    <!-- Title changes depending on whether we're creating or editing a link -->
+    <Window.Style>
+        <Style TargetType="Window">
+            <Setter Property="Title" Value="Link Nexus Mod"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                    <Setter Property="Title" Value="Edit Nexus Link"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Style>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Content -->
+        <StackPanel Grid.Row="0" Margin="16,16,16,8">
+
+            <!-- Prompt -->
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#444444" Margin="0,0,0,10">
+                <Run Text="Paste the Nexus mod page URL for"/>
+                <Run Text=" "/><Run Text="{Binding ModName, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=":"/>
+            </TextBlock>
+
+            <!-- URL input + Search button -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Text="{Binding UrlInput, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Consolas" FontSize="12"
+                         Padding="4,5"
+                         VerticalContentAlignment="Center"
+                         x:Name="UrlBox"/>
+                <Button Grid.Column="1"
+                        Content="Search"
+                        Width="70" Height="28" Margin="6,0,0,0"
+                        Command="{Binding SearchCommand}"
+                        ToolTip="Search Nexus in browser (pre-filled with mod name)"/>
+            </Grid>
+
+            <!-- Hint -->
+            <TextBlock FontSize="10" Foreground="#999999" Margin="0,4,0,0" TextWrapping="Wrap">
+                <Run Text="Nexus URL: "/><Run Text="https://www.nexusmods.com/baldursgate3/mods/12345" FontFamily="Consolas"/>
+                <LineBreak/>
+                <Run Text="Nexus ID:  "/><Run Text="12345" FontFamily="Consolas"/>
+                <LineBreak/>
+                <Run Text="External:  "/><Run Text="https://patreon.com/..." FontFamily="Consolas"/>
+            </TextBlock>
+
+            <!-- Error -->
+            <TextBlock Text="{Binding ErrorText}"
+                       Foreground="#c0392b" FontSize="11" Margin="0,6,0,0"
+                       Visibility="{Binding HasError, Converter={StaticResource BoolToVisibilityConverter}}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Buttons: Remove (left, edit mode only) | Cancel + Link (right) -->
+        <Grid Grid.Row="1" Margin="16,4,16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Remove — only visible when editing an existing link -->
+            <Button Grid.Column="0"
+                    Content="Remove Link"
+                    Width="95" Padding="0,5"
+                    Foreground="#b85450"
+                    Command="{Binding RemoveCommand}"
+                    Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTip="Remove the manual link and revert this mod to Unlink state"/>
+
+            <!-- Cancel + Link (right-aligned) -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Cancel"
+                        Width="80" Padding="0,5" Margin="0,0,8,0"
+                        IsCancel="True"
+                        Command="{Binding CancelCommand}"/>
+                <Button Content="Link"
+                        Width="80" Padding="0,5"
+                        IsDefault="True"
+                        Command="{Binding LinkCommand}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

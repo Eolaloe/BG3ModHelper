@@ -41,11 +41,11 @@ public static class Downloader
             Directory.CreateDirectory(extractDir);
 
             // Step 1: Download zip
-            progress?.Report(new DownloadProgress("Downloading...", 0));
+            progress?.Report(new DownloadProgress("Downloading", 0));
             await DownloadFileAsync(downloadUrl, tempZip, progress, ct);
 
             // Step 2: Extract .pak files from zip
-            progress?.Report(new DownloadProgress("Extracting...", 0));
+            progress?.Report(new DownloadProgress("Extracting", 0));
             var pakFiles = ExtractPakFiles(tempZip, extractDir);
 
             if (pakFiles.Count == 0)
@@ -69,7 +69,7 @@ public static class Downloader
             // Step 4: Backup existing primary pak (only if enabled)
             if (backupEnabled && File.Exists(existingPakPath))
             {
-                progress?.Report(new DownloadProgress("Backing up...", 0));
+                progress?.Report(new DownloadProgress("Backing up", 0));
                 BackupExistingPak(existingPakPath);
             }
 
@@ -158,7 +158,7 @@ public static class Downloader
             var installedPaths   = new List<string>();
             var replacedPakNames = new Dictionary<string, string>();
 
-            progress?.Report(new DownloadProgress("Applying...", 80));
+            progress?.Report(new DownloadProgress("Applying", 80));
             foreach (var sourceFile in pakFiles)
             {
                 var destPath = Path.Combine(modsFolder, Path.GetFileName(sourceFile));
@@ -234,8 +234,8 @@ public static class Downloader
                 var pct  = (int)(received * 100 / total); // 0-100% for download phase
                 var mb   = received / (1024.0 * 1024.0);
                 var text = total > 0
-                    ? $"Downloading... {mb:F1} MB / {total / (1024.0 * 1024.0):F1} MB"
-                    : $"Downloading... {mb:F1} MB";
+                    ? $"{SizeFormatter.FormatSize(received)} / {SizeFormatter.FormatSize(total)}"
+                    : SizeFormatter.FormatSize(received);
                 progress.Report(new DownloadProgress(text, pct));
             }
         }
@@ -398,10 +398,10 @@ public static class Downloader
         Directory.CreateDirectory(tempDir);
         Directory.CreateDirectory(extractDir);
 
-        progress?.Report(new DownloadProgress("Downloading...", 0));
+        progress?.Report(new DownloadProgress("Downloading", 0));
         await DownloadFileAsync(downloadUrl, tempZip, progress, ct);
 
-        progress?.Report(new DownloadProgress("Extracting...", 0));
+        progress?.Report(new DownloadProgress("Extracting", 0));
         var pakFiles = ExtractPakFiles(tempZip, extractDir);
         if (pakFiles.Count == 0)
             throw new InvalidOperationException("No .pak files found in downloaded archive.");
@@ -449,6 +449,19 @@ public static class Downloader
 
 /// <summary>Progress info for download UI.</summary>
 public record DownloadProgress(string Text, int Percent);
+
+/// <summary>Formats a byte count as KB / MB / GB with 1 decimal place.</summary>
+file static class SizeFormatter
+{
+    public static string FormatSize(long bytes)
+    {
+        if (bytes < 1024L * 1024L)
+            return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024L * 1024L)
+            return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+}
 
 /// <summary>
 /// Result of a download+install operation.

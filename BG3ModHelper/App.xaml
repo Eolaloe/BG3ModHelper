@@ -3,8 +3,24 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="clr-namespace:BG3ModHelper.Views">
     <Application.Resources>
-        <views:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <views:InverseBoolConverter      x:Key="InverseBoolConverter"/>
-        <views:StyleKeyConverter         x:Key="StyleKeyConverter"/>
+        <views:BoolToVisibilityConverter        x:Key="BoolToVisibilityConverter"/>
+        <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <views:InverseBoolConverter             x:Key="InverseBoolConverter"/>
+        <views:StyleKeyConverter                x:Key="StyleKeyConverter"/>
+
+        <!-- ── Source badge: shared across all windows ── -->
+        <Style x:Key="SourceBadgeBorder" TargetType="Border">
+            <Setter Property="MinWidth"            Value="46"/>
+            <Setter Property="CornerRadius"        Value="3"/>
+            <Setter Property="Padding"             Value="4,1"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment"   Value="Center"/>
+        </Style>
+        <Style x:Key="SourceBadgeText" TargetType="TextBlock">
+            <Setter Property="Foreground"    Value="White"/>
+            <Setter Property="FontSize"      Value="10"/>
+            <Setter Property="FontWeight"    Value="SemiBold"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
     </Application.Resources>
 </Application>
