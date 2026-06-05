@@ -392,49 +392,33 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Refresh ===
 
-    private async void ExecuteRefresh()
+    /// <summary>
+    /// Lightweight local refresh — no API calls.
+    /// Removes entries that are already up-to-date based on local data only:
+    ///   1. Status == Updated  (downloaded this session)
+    ///   2. Nexus fileId now matches the latest DB fileId (downloaded in a previous session)
+    /// To discover new updates, close this window and run Check Updates again.
+    /// </summary>
+    private void ExecuteRefresh()
     {
-        if (_reloadFunc == null || IsBusy) return;
+        if (IsBusy) return;
 
-        IsBusy   = true;
-        BusyText = "Refreshing...";
+        var toRemove = Entries
+            .Where(e => e.Status == UpdateStatus.Updated ||
+                        (e.NexusFileId > 0 && _fileIdStore != null &&
+                         _fileIdStore.GetFileId(e.UUID) == e.NexusFileId))
+            .ToList();
 
-        try
+        foreach (var e in toRemove)
         {
-            var newUpdates = await _reloadFunc();
-            var newDict    = newUpdates.ToDictionary(u => u.MetaUuid);
-
-            // Remove entries no longer in the new update list
-            var toRemove = Entries
-                .Where(e => !newDict.ContainsKey(e.UUID))
-                .ToList();
-            foreach (var e in toRemove) Entries.Remove(e);
-
-            // Add new entries (re-apply grouping for the full new set)
-            var existing = Entries.Select(e => e.UUID).ToHashSet();
-            var newVms = newUpdates
-                .Where(u => !existing.Contains(u.MetaUuid))
-                .Select(u =>
-                {
-                    var vm = new UpdateEntryViewModel(u, _nexusIsPremium, _modsFolder,
-                        _backupEnabled, _modioApi, _nexusApi, _fileIdStore, _historyStore);
-                    vm.DownloadRequested += OnDownloadRequested;
-                    vm.PageOpenRequested += OnPageOpenRequested;
-                    vm.NexusRegistered   += OnNexusRegistered;
-                    vm.CancelRequested   += OnCancelRequested;
-                    return vm;
-                }).ToList();
-            foreach (var vm in GroupEntries(newVms))
-                Entries.Add(vm);
+            e.PropertyChanged -= OnEntrySelectionChanged;
+            Entries.Remove(e);
+            ActiveEntries.Remove(e);
+            InactiveEntries.Remove(e);
         }
-        catch (Exception ex) { Logger.Error($"Refresh failed: {ex.Message}"); }
-        finally
-        {
-            IsBusy   = false;
-            BusyText = "";
-            UpdateSummary();
-            RefreshCommand.RaiseCanExecuteChanged();
-        }
+
+        UpdateSummary();
+        RefreshCommand.RaiseCanExecuteChanged();
     }
 
     // === Logic ===

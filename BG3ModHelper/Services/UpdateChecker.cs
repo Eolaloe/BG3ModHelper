@@ -141,7 +141,43 @@ public static class UpdateChecker
                         mod.NexusModId = dbEntry.NexusModId;
 
                     bool hasUpdate = HasNexusUpdate(mod, dbEntry, fileIdStore);
-                    if (hasUpdate)
+
+                    // Stale DB fallback: DB says "no update" but DB hasn't been maintained
+                    // for 7+ days AND this mod appears in the recently-updated list.
+                    // The DB entry may not reflect the latest fileId — verify via direct API call.
+                    if (!hasUpdate &&
+                        nexusApi != null &&
+                        nexusDb.IsStale &&
+                        recentlyUpdated.Contains(dbEntry.NexusModId))
+                    {
+                        Logger.Debug($"Nexus [{mod.MetaModuleName}] DB stale + in recently-updated — verifying via API");
+                        var latestFile = await nexusApi.GetLatestFileAsync(dbEntry.NexusModId);
+                        if (latestFile != null && latestFile.NexusFileId != dbEntry.NexusFileId)
+                        {
+                            var localFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                            hasUpdate = localFileId.HasValue
+                                ? localFileId.Value != latestFile.NexusFileId
+                                : IsNewer(latestFile.NexusFileVersion, mod.MetaVersion);
+
+                            if (hasUpdate)
+                            {
+                                entry = EnsureEntry(entries, mod);
+                                entry.NexusFileVersion = latestFile.NexusFileVersion;
+                                entry.NexusFileId      = latestFile.NexusFileId;
+                                if (string.IsNullOrEmpty(entry.UpdateNewVersion) ||
+                                    IsNewer(latestFile.NexusFileVersion, entry.UpdateNewVersion))
+                                    entry.UpdateNewVersion = latestFile.NexusFileVersion;
+                                entry.NexusModPageUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.NexusModId}";
+                                entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                                if (!string.IsNullOrEmpty(dbEntry.NexusModName))
+                                    entry.NexusModName = dbEntry.NexusModName;
+                                Logger.Info($"Nexus [{mod.MetaModuleName}] stale DB fallback — update detected: DB fileId={dbEntry.NexusFileId} → API fileId={latestFile.NexusFileId}");
+                            }
+                        }
+                    }
+
+                    // Normal DB update path (stale fallback already handled its own entry)
+                    if (hasUpdate && (entry == null || !entry.AvailableSources.Contains(UpdateSource.NEXUSMODS)))
                     {
                         entry = EnsureEntry(entries, mod);
                         entry.NexusFileVersion = dbEntry.NexusFileVersion;
@@ -149,7 +185,6 @@ public static class UpdateChecker
                         if (string.IsNullOrEmpty(entry.UpdateNewVersion) ||
                             IsNewer(dbEntry.NexusFileVersion, entry.UpdateNewVersion))
                             entry.UpdateNewVersion = dbEntry.NexusFileVersion;
-
                         entry.NexusModPageUrl = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.NexusModId}";
                         entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
                         if (!string.IsNullOrEmpty(dbEntry.NexusModName))

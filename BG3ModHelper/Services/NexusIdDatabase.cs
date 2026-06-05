@@ -38,6 +38,20 @@ public class NexusIdDatabase
     // Nexus mod IDs known to be deleted or hidden — populated from DB "_removed" list
     private HashSet<int> _removedModIds = new();
 
+    // Last time the DB was updated by the maintenance script (_meta.last_run)
+    private DateTimeOffset? _lastRun;
+
+    private static readonly TimeSpan StaleThreshold = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// True when the DB has not been updated for more than 7 days.
+    /// Used to decide whether to fall back to direct Nexus API calls
+    /// for mods that appear up-to-date according to the (potentially stale) DB.
+    /// </summary>
+    public bool IsStale =>
+        _lastRun == null ||
+        (DateTimeOffset.UtcNow - _lastRun.Value) > StaleThreshold;
+
 
 
     /// <summary>Load DB from cache / GitHub (sync if stale).</summary>
@@ -260,10 +274,24 @@ public class NexusIdDatabase
 
     private void BuildIndex(string json)
     {
-        // DB structure: { "_removed": [...], "modId": { modName, uploadedBy, modId, paks: [...] } }
+        // DB structure: { "_meta": { last_run, total_mods }, "_removed": [...], "modId": { ... } }
         var raw = JObject.Parse(json);
         var index   = new Dictionary<string, List<PakLookupEntry>>();
         var removed = new HashSet<int>();
+
+        // Parse _meta.last_run to determine DB freshness
+        if (raw["_meta"]?["last_run"]?.Value<string>() is string lastRunStr &&
+            DateTimeOffset.TryParse(lastRunStr, out var lastRun))
+        {
+            _lastRun = lastRun;
+            Logger.Info($"NexusIdDatabase: DB last updated {lastRun:yyyy-MM-dd HH:mm} UTC" +
+                        (IsStale ? " — STALE (>7 days)" : ""));
+        }
+        else
+        {
+            _lastRun = null;
+            Logger.Warn("NexusIdDatabase: _meta.last_run missing — treating DB as stale");
+        }
 
         // Parse _removed list: mod IDs deleted or hidden on Nexus since last DB update
         if (raw["_removed"] is JArray removedArr)
