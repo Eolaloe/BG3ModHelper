@@ -1108,8 +1108,9 @@ public class MainWindowViewModel : ViewModelBase
 
         if (result == MessageBoxResult.Yes)
         {
-            // Add the new intruder to KnownHandlers before overwriting
+            // Add the new intruder to KnownHandlers before overwriting (never add Helper itself)
             if (!string.IsNullOrEmpty(current) &&
+                !NxmHandler.IsSelfExe(NxmHandler.ExtractExePath(current)) &&
                 !settings.NxmKnownHandlers.Contains(current))
                 settings.NxmKnownHandlers.Add(current);
 

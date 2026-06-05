@@ -19,21 +19,36 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _settings        = settings;
         _vm              = vm;
-        // Auto-detect current nxm handler and add to known list
+        // Auto-detect current nxm handler and add to known list.
+        // Never add old Helper paths — IsSelfExe guards against that.
         var currentCmd = NxmHandler.ReadCurrentCommand();
         if (!string.IsNullOrEmpty(currentCmd) && !NxmHandler.IsRegisteredToSelf())
         {
-            if (!settings.NxmKnownHandlers.Contains(currentCmd))
+            var currentExe = NxmHandler.ExtractExePath(currentCmd);
+            if (!NxmHandler.IsSelfExe(currentExe))
             {
-                settings.NxmKnownHandlers.Add(currentCmd);
-                SettingsStore.Save(settings);
+                if (!settings.NxmKnownHandlers.Contains(currentCmd))
+                {
+                    settings.NxmKnownHandlers.Add(currentCmd);
+                    SettingsStore.Save(settings);
+                }
+                // Pre-set as secondary if nothing configured yet
+                if (string.IsNullOrEmpty(settings.NxmPreviousHandler))
+                {
+                    settings.NxmPreviousHandler = currentCmd;
+                    SettingsStore.Save(settings);
+                }
             }
-            // Pre-set as secondary if nothing configured yet
-            if (string.IsNullOrEmpty(settings.NxmPreviousHandler))
-            {
-                settings.NxmPreviousHandler = currentCmd;
-                SettingsStore.Save(settings);
-            }
+        }
+
+        // Clean up any stale Helper entries accumulated from previous versions/paths
+        var stale = settings.NxmKnownHandlers
+            .Where(cmd => NxmHandler.IsSelfExe(NxmHandler.ExtractExePath(cmd)))
+            .ToList();
+        if (stale.Count > 0)
+        {
+            stale.ForEach(cmd => settings.NxmKnownHandlers.Remove(cmd));
+            SettingsStore.Save(settings);
         }
 
         LoadToUI();
@@ -316,8 +331,9 @@ public partial class SettingsWindow : Window
         }
         else if (!string.IsNullOrEmpty(primaryCmd))
         {
-            // Other app → register directly + check OFF
-            if (!_settings.NxmKnownHandlers.Contains(primaryCmd))
+            // Other app → register directly + check OFF (never add Helper itself)
+            if (!NxmHandler.IsSelfExe(NxmHandler.ExtractExePath(primaryCmd)) &&
+                !_settings.NxmKnownHandlers.Contains(primaryCmd))
                 _settings.NxmKnownHandlers.Add(primaryCmd);
             NxmHandler.RegisterCommand(primaryCmd);
             _settings.NxmHandlerEnabled  = false;
@@ -365,6 +381,7 @@ public partial class SettingsWindow : Window
         {
             if (cmd == selfCmd) continue;
             var exePath = NxmHandler.ExtractExePath(cmd);
+            if (NxmHandler.IsSelfExe(exePath)) continue;           // skip old Helper paths
             if (exePath != null && !System.IO.File.Exists(exePath)) continue;
             _handlerCommands.Add(cmd);
         }

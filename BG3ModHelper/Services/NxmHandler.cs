@@ -132,6 +132,22 @@ public static partial class NxmHandler
         }
     }
 
+    /// <summary>
+    /// Returns true if <paramref name="exePath"/> refers to this application —
+    /// same filename regardless of directory or version.
+    /// Used to prevent old Helper paths from appearing as separate dropdown entries.
+    /// </summary>
+    public static bool IsSelfExe(string? exePath)
+    {
+        if (string.IsNullOrEmpty(exePath)) return false;
+        var self = Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrEmpty(self)) return false;
+        return string.Equals(
+            Path.GetFileName(exePath),
+            Path.GetFileName(self),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Returns the command string that would register this app as the handler.</summary>
     public static string GetSelfCommand()
     {
@@ -158,8 +174,9 @@ public static partial class NxmHandler
             settings.NxmPreviousHandler = current;
             Logger.Info($"NxmHandler.EnableHandler: backed up previous handler ({current})");
 
-            // Accumulate in known handlers for dropdown
-            if (!settings.NxmKnownHandlers.Contains(current))
+            // Accumulate in known handlers for dropdown — but never add old Helper paths
+            if (!IsSelfExe(ExtractExePath(current)) &&
+                !settings.NxmKnownHandlers.Contains(current))
                 settings.NxmKnownHandlers.Add(current);
         }
 
