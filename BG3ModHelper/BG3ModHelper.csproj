@@ -16,10 +16,6 @@
 
 		<!-- Release / Publish settings -->
 		<PublishSingleFile>true</PublishSingleFile>
-		<!-- Embed native DLLs (e.g. WebView2Loader) into the single-file exe.
-		     They are extracted to a temp dir at launch; we pre-load them in
-		     LibraryLoader before SetDllDirectory overrides the search path. -->
-		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishReadyToRun>true</PublishReadyToRun>
@@ -52,9 +48,13 @@
 	</ItemGroup>
 
 	<!--
-	  LSLib: C++/CLI assembly — loaded at runtime from BG3MM's _Lib folder
-	  via LibraryLoader.InitializeLSLib(). Not distributed alongside the exe.
-	  Private=false keeps it out of the build output and single-file bundle.
+	  LSLib: C++/CLI assembly — cannot be embedded in the single-file bundle
+	  (.NET 8 limitation). Instead, all six DLLs are embedded as EmbeddedResources
+	  and extracted to %LocalAppData%\BG3ModHelper\Lib\ on first run (or whenever
+	  any file is missing). LibraryLoader loads them from that stable on-disk path.
+
+	  Reference Private=false: compile-time only, not copied to build output.
+	  LogicalName: resource is accessed by simple filename (e.g. "LSLib.dll").
 	-->
 	<ItemGroup>
 		<Reference Include="LSLib">
@@ -62,6 +62,16 @@
 			<Private>false</Private>
 			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Lib\LSLib.dll">          <LogicalName>LSLib.dll</LogicalName>          </EmbeddedResource>
+		<EmbeddedResource Include="Lib\LSLibNative.dll">    <LogicalName>LSLibNative.dll</LogicalName>    </EmbeddedResource>
+		<EmbeddedResource Include="Lib\Ijwhost.dll">        <LogicalName>Ijwhost.dll</LogicalName>        </EmbeddedResource>
+		<EmbeddedResource Include="Lib\LZ4.dll">            <LogicalName>LZ4.dll</LogicalName>            </EmbeddedResource>
+		<EmbeddedResource Include="Lib\LZ4pn.dll">          <LogicalName>LZ4pn.dll</LogicalName>          </EmbeddedResource>
+		<EmbeddedResource Include="Lib\ZstdSharp.dll">      <LogicalName>ZstdSharp.dll</LogicalName>      </EmbeddedResource>
+		<EmbeddedResource Include="Lib\WebView2Loader.dll"> <LogicalName>WebView2Loader.dll</LogicalName> </EmbeddedResource>
 	</ItemGroup>
 
 </Project>
