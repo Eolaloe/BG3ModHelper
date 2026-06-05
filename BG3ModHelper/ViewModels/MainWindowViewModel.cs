@@ -255,7 +255,7 @@ public class MainWindowViewModel : ViewModelBase
         _settings.BG3MMFolderPath = dialog.FolderName;
         SettingsStore.Save(_settings);
         OnPropertyChanged(nameof(BG3MMFolderPath));
-        LibraryLoader.Initialize(dialog.FolderName);
+        LibraryLoader.SetBg3mmFolder(dialog.FolderName);
         AddActivity("BG3MM folder updated: " + dialog.FolderName);
         Logger.Info("BG3MM folder changed to: " + dialog.FolderName);
         _ = RefreshModsAsync();
@@ -580,8 +580,8 @@ public class MainWindowViewModel : ViewModelBase
 
         _settings = SettingsStore.Load();
 
-        if (!LibraryLoader.IsInitialized && !string.IsNullOrEmpty(_settings.BG3MMFolderPath))
-            LibraryLoader.Initialize(_settings.BG3MMFolderPath);
+        if (!string.IsNullOrEmpty(_settings.BG3MMFolderPath))
+            LibraryLoader.SetBg3mmFolder(_settings.BG3MMFolderPath);
 
         OnPropertyChanged(nameof(BG3MMFolderPath));
         OnPropertyChanged(nameof(ModsFolderDisplay));
@@ -941,15 +941,6 @@ public class MainWindowViewModel : ViewModelBase
         {
             _installedModsCount = 0;
             OnPropertyChanged(nameof(InstalledModsCountDisplay));
-            return;
-        }
-
-        if (!LibraryLoader.IsInitialized)
-        {
-            _installedModsCount = PathDiscovery.CountPakFiles(folder);
-            OnPropertyChanged(nameof(InstalledModsCountDisplay));
-            AddActivity("Found " + _installedModsCount +
-                        " mod(s) (set BG3MM folder to enable full scan)");
             return;
         }
 

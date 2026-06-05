@@ -55,14 +55,22 @@ public partial class App : Application
         _ipcCts = new CancellationTokenSource();
         _ = Task.Run(() => IpcServerLoop(_ipcCts.Token));
 
+        // Load settings first so we can pass BG3MM's _Lib path to InitializeLSLib.
+        // LSLib (C++/CLI) must be loaded from a stable on-disk directory — not a
+        // single-file temp dir. BG3MM's _Lib folder is the preferred source because
+        // it ships compatible versions of LSLib.dll / LSLibNative.dll / Ijwhost.dll.
+        // If BG3MM is not configured yet the exe dir is used as fallback.
         var settings = SettingsStore.Load();
 
+        var bg3mmLibDir = !string.IsNullOrEmpty(settings.BG3MMFolderPath)
+            ? Path.Combine(settings.BG3MMFolderPath, "_Lib")
+            : null;
+
+        // Initialize LSLib (must be before any pak scanning)
+        LibraryLoader.InitializeLSLib(bg3mmLibDir);
+
         if (!string.IsNullOrEmpty(settings.BG3MMFolderPath))
-        {
-            var ok = LibraryLoader.Initialize(settings.BG3MMFolderPath);
-            if (!ok)
-                Logger.Warn("LibraryLoader: _Lib folder missing === .pak parsing disabled");
-        }
+            LibraryLoader.SetBg3mmFolder(settings.BG3MMFolderPath);
 
         var mainWindow = new MainWindow();
         mainWindow.Show();

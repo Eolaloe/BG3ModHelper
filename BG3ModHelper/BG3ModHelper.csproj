@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
@@ -16,6 +16,9 @@
 
 		<!-- Release / Publish settings -->
 		<PublishSingleFile>true</PublishSingleFile>
+		<!-- Embed native DLLs (e.g. WebView2Loader) into the single-file exe.
+		     They are extracted to a temp dir at launch; we pre-load them in
+		     LibraryLoader before SetDllDirectory overrides the search path. -->
 		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -49,41 +52,16 @@
 	</ItemGroup>
 
 	<!--
-	  LSLib bundled distribution.
-	  LSLib.dll (managed) + native dependencies are included in the build output
-	  and embedded into the single-file publish via IncludeNativeLibrariesForSelfExtract.
-
-	  Files in Lib\:
-	    LSLib.dll        — managed library (Norbyte, MIT license)
-	    LSLibNative.dll  — native C++ companion
-	    Ijwhost.dll      — C++/CLI interop host
-	    LZ4.dll          — LZ4 compression (pak format)
-	    LZ4pn.dll        — LZ4 portable native
-	    ZstdSharp.dll    — Zstandard compression (patch 7+ pak format)
+	  LSLib: C++/CLI assembly — loaded at runtime from BG3MM's _Lib folder
+	  via LibraryLoader.InitializeLSLib(). Not distributed alongside the exe.
+	  Private=false keeps it out of the build output and single-file bundle.
 	-->
 	<ItemGroup>
 		<Reference Include="LSLib">
 			<HintPath>Lib\LSLib.dll</HintPath>
-			<Private>true</Private>
+			<Private>false</Private>
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 		</Reference>
-	</ItemGroup>
-
-	<ItemGroup>
-		<Content Include="Lib\LSLibNative.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Lib\Ijwhost.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Lib\LZ4.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Lib\LZ4pn.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-		<Content Include="Lib\ZstdSharp.dll">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
 	</ItemGroup>
 
 </Project>
