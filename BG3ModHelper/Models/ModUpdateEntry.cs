@@ -45,5 +45,10 @@ public enum UpdateStatus
     Updated,
     Failed,
     Retry,
-    Skipped
+    Skipped,
+    /// <summary>
+    /// Nexus returned 403 on download_link — manager downloads disabled for this file.
+    /// Entry will be routed to the WebView slide queue for manual download.
+    /// </summary>
+    ManualRequired
 }

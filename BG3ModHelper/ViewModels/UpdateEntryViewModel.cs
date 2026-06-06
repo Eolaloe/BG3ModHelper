@@ -519,6 +519,14 @@ public partial class UpdateEntryViewModel : ViewModelBase
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning));
         }
+        catch (ManagerDownloadDisabledException ex)
+        {
+            // Manager downloads disabled by mod author — route to WebView manual download queue
+            Status     = UpdateStatus.ManualRequired;
+            StatusText = "Manual";
+            foreach (var child in _groupChildren) { child.Status = UpdateStatus.ManualRequired; child.StatusText = "Manual"; }
+            Logger.Warn($"Manager download disabled for {ModName} — queuing for manual download: {ex.Message}");
+        }
         catch (OperationCanceledException)
         {
             Status     = UpdateStatus.Skipped;
@@ -576,9 +584,16 @@ public partial class UpdateEntryViewModel : ViewModelBase
         // Step 2: Premium download URL (download_link.json)
         var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.NexusFileId);
         if (string.IsNullOrEmpty(url))
+        {
+            // 403 on download_link for a premium account → manager downloads disabled by mod author
+            if (_nexusApi.LastStatusCode == 403)
+                throw new ManagerDownloadDisabledException(
+                    $"Manager downloads are disabled for mod {_entry.NexusModId} (file {latest.NexusFileId}).");
+
             throw new InvalidOperationException(
                 $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.NexusFileId}).\n" +
                 "(If this persists, verify that your API key has Premium access.)");
+        }
 
         return (url, latest.NexusFileId, latest.NexusFileName);
     }
@@ -730,3 +745,10 @@ public partial class UpdateEntryViewModel : ViewModelBase
         PrimaryActionCommand.RaiseCanExecuteChanged();
     }
 }
+
+/// <summary>
+/// Thrown when Nexus returns HTTP 403 on download_link.json for a premium account,
+/// indicating the mod author has disabled manager downloads for this file.
+/// The caller should route this entry to the WebView manual download queue.
+/// </summary>
+public sealed class ManagerDownloadDisabledException(string message) : Exception(message) { }

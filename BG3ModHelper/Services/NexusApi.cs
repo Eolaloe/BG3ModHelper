@@ -32,6 +32,9 @@ public class NexusApi(string apiKey)
     /// <summary>Last error message from the API response body, if any.</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>HTTP status code of the last API response (0 = never called or network error).</summary>
+    public int LastStatusCode { get; private set; }
+
     /// <summary>
     /// Returns a new instance with the same API key. Rate limit counters reset to defaults.
     /// Calling just before download avoids inheriting rate limit state from CheckUpdates.
@@ -405,6 +408,8 @@ public class NexusApi(string apiKey)
                 return null;
             }
 
+            LastStatusCode = (int)response.StatusCode;
+
             if ((int)response.StatusCode == 429)
             {
                 Logger.Warn($"NexusApi: rate limit exceeded (429) — {path}");
@@ -413,7 +418,7 @@ public class NexusApi(string apiKey)
 
             if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
-                Logger.Warn($"NexusApi: forbidden (403) — {path} (Premium required?)");
+                Logger.Warn($"NexusApi: forbidden (403) — {path} (Premium required or manager downloads disabled)");
                 return null;
             }
 

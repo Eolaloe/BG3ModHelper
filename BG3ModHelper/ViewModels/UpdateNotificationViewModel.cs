@@ -483,6 +483,16 @@ public class UpdateNotificationViewModel : ViewModelBase
                 BusyText = "";
                 UpdateSummary();
                 DownloadSelectedCommand.RaiseCanExecuteChanged();
+
+                // Auto-download items that hit 403 (manager downloads disabled) → merge into manual queue
+                var manualItems = autoItems
+                    .Where(e => e.Status == UpdateStatus.ManualRequired)
+                    .ToList();
+                if (manualItems.Count > 0)
+                {
+                    Logger.Info($"ExecuteDownloadSelected: {manualItems.Count} mod(s) require manual download — routing to WebView queue");
+                    freeItems = freeItems.Concat(manualItems).ToList();
+                }
             }
 
             // Nexus Free slide — open WebView panel
