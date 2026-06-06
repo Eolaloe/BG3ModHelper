@@ -119,7 +119,13 @@ public static class LibraryLoader
         };
 
         _initialized = true;
-        Logger.Info($"LibraryLoader: initialized — libDir={libDir}");
+
+        // Diagnostic summary: confirm all DLLs are present on disk
+        var missing = _lslibFiles.Where(f => !File.Exists(Path.Combine(libDir, f))).ToList();
+        if (missing.Count == 0)
+            Logger.Info($"LibraryLoader: initialized — libDir={libDir} — all {_lslibFiles.Length} DLLs present");
+        else
+            Logger.Warn($"LibraryLoader: initialized with missing DLLs — {string.Join(", ", missing)}");
     }
 
     /// <summary>

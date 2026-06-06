@@ -367,8 +367,12 @@ public class MainWindowViewModel : ViewModelBase
         await RefreshModsAsync();
         if (_installedMods.Count == 0)
         {
+            var scannedFolder = !string.IsNullOrEmpty(_settings.ModsFolderPath)
+                ? _settings.ModsFolderPath
+                : PathDiscovery.GetDefaultModsFolder();
+            Logger.Warn($"CheckUpdates: no mods found in — {scannedFolder}");
             MessageBox.Show(
-                "No installed mods found. Check your BG3MM folder setting.",
+                $"No installed mods found.\n\nScanned folder:\n{scannedFolder}\n\nIf this is wrong, go to Settings → Mods Folder Path and set the correct path.\n(Default: %LocalAppData%\\Larian Studios\\Baldur's Gate 3\\Mods)",
                 "Nothing to check", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -937,8 +941,11 @@ public class MainWindowViewModel : ViewModelBase
             ? _settings.ModsFolderPath
             : PathDiscovery.GetDefaultModsFolder();
 
+        Logger.Info($"RefreshMods: scanning folder — {folder}");
+
         if (!PathDiscovery.ModsFolderExists(folder))
         {
+            Logger.Warn($"RefreshMods: mods folder not found — {folder}");
             _installedModsCount = 0;
             OnPropertyChanged(nameof(InstalledModsCountDisplay));
             return;

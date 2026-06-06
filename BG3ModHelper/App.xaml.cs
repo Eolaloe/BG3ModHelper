@@ -51,6 +51,16 @@ public partial class App : Application
 
         Logger.Info("===== Application started =====");
 
+        // System diagnostic info — helps users report issues
+        var asm     = System.Reflection.Assembly.GetExecutingAssembly();
+        var version = asm.GetName().Version?.ToString() ?? "unknown";
+        Logger.Info($"Version    : {version}");
+        Logger.Info($"OS         : {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
+        Logger.Info($"Runtime    : {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+        Logger.Info($"Exe path   : {System.AppContext.BaseDirectory}");
+        Logger.Info($"Data folder: {SettingsStore.GetDataFolder()}");
+        Logger.Info($"Mods default: {PathDiscovery.GetDefaultModsFolder()}");
+
         // === Start IPC server (background) ===
         _ipcCts = new CancellationTokenSource();
         _ = Task.Run(() => IpcServerLoop(_ipcCts.Token));

@@ -25,16 +25,31 @@ public static class ModScanner
         if (!Directory.Exists(modsFolder))
         {
             Logger.Warn($"ModScanner: mods folder not found — {modsFolder}");
+            Logger.Warn($"ModScanner: check Settings → Mods Folder Path");
             return new List<InstalledMod>();
         }
 
         var pakFiles = Directory.GetFiles(modsFolder, "*.pak");
-        Logger.Info($"ModScanner: found {pakFiles.Length} .pak files");
+        Logger.Info($"ModScanner: folder = {modsFolder}");
+        Logger.Info($"ModScanner: found {pakFiles.Length} .pak file(s)");
+
+        if (pakFiles.Length == 0)
+        {
+            Logger.Warn($"ModScanner: folder exists but contains no .pak files — is this the right Mods folder?");
+            return new List<InstalledMod>();
+        }
 
         var cache        = LoadCache();
         var results      = new List<InstalledMod>();
         var cacheChanged = false;
         var processed    = 0;
+
+        // Scan counters for diagnostic summary
+        int fromCache      = 0;
+        int parsed         = 0;
+        int noMeta         = 0;   // pak opened but no meta.lsx → engine/game file, not a mod
+        int failed         = 0;   // LSLib threw an exception
+        int failuresLogged = 0;   // tracks how many individual failure lines have been written
 
         await Task.Run(() =>
         {
@@ -46,10 +61,11 @@ public static class ModScanner
                     entry.PakFileLastWriteTime == modifiedUtc)
                 {
                     results.Add(entry.ModData);
+                    fromCache++;
                 }
                 else
                 {
-                    var mod = ParsePak(pakPath);
+                    var (mod, reason) = ParsePakDetailed(pakPath, ref failuresLogged);
                     if (mod != null)
                     {
                         mod.PakFilePath          = pakPath;
@@ -63,6 +79,15 @@ public static class ModScanner
                             ModData         = mod
                         };
                         cacheChanged = true;
+                        parsed++;
+                    }
+                    else if (reason == SkipReason.NoMeta)
+                    {
+                        noMeta++;
+                    }
+                    else
+                    {
+                        failed++;
                     }
                 }
 
@@ -86,19 +111,40 @@ public static class ModScanner
         if (cacheChanged)
             SaveCache(cache);
 
-        Logger.Info($"ModScanner: complete — {results.Count} mods parsed");
+        // Diagnostic summary — always logged so users can paste the log file for support
+        Logger.Info($"ModScanner: complete — total={pakFiles.Length} | parsed={parsed} cached={fromCache} no-meta={noMeta} failed={failed}");
+        Logger.Info($"ModScanner: result — {results.Count} mod(s) loaded");
+
+        if (failed > 0)
+        {
+            var suppressed = failed - failuresLogged;
+            var detail = suppressed > 0
+                ? $"first {failuresLogged} shown above, {suppressed} suppressed"
+                : $"see WARN lines above for details";
+            Logger.Warn($"ModScanner: {failed} pak file(s) failed to parse (LSLib error) — {detail}");
+        }
+        if (results.Count == 0 && noMeta == pakFiles.Length)
+            Logger.Warn($"ModScanner: all pak files lack meta.lsx — folder may contain game engine files, not user mods");
+
         return results;
     }
 
     // === .pak parsing ===
 
+    private enum SkipReason { None, NoMeta, Exception }
+
+    // Max number of individual parse-failure lines written to the log.
+    // After this limit, failures are counted silently and summarised at the end.
+    private const int MaxFailureLogLines = 5;
+
     /// <summary>
     /// Reads UUID/Name/etc from a .pak file's meta.lsx. Returns null if unreadable.
     /// Public wrapper for use by external callers (e.g. NxmInstaller).
     /// </summary>
-    public static InstalledMod? InspectPak(string pakPath) => ParsePak(pakPath);
+    public static InstalledMod? InspectPak(string pakPath) => ParsePakDetailed(pakPath, ref _noopCounter).mod;
+    private static int _noopCounter = 0;
 
-    private static InstalledMod? ParsePak(string pakPath)
+    private static (InstalledMod? mod, SkipReason reason) ParsePakDetailed(string pakPath, ref int failuresLogged)
     {
         try
         {
@@ -108,15 +154,19 @@ public static class ModScanner
                 f.Name.EndsWith("meta.lsx", StringComparison.OrdinalIgnoreCase));
 
             if (metaFile == null)
-                return null;
+                return (null, SkipReason.NoMeta);
 
             using var stream = metaFile.CreateContentReader();
-            return ParseMetaLsx(stream);
+            return (ParseMetaLsx(stream), SkipReason.None);
         }
         catch (Exception ex)
         {
-            Logger.Warn($"ModScanner: skipping {Path.GetFileName(pakPath)} — {ex.Message}");
-            return null;
+            if (failuresLogged < MaxFailureLogLines)
+            {
+                Logger.Warn($"ModScanner: parse failed [{Path.GetFileName(pakPath)}] — {ex.GetType().Name}: {ex.Message}");
+                failuresLogged++;
+            }
+            return (null, SkipReason.Exception);
         }
     }
 
