@@ -28,6 +28,13 @@ public class ModUpdateEntry
 
     public bool   CanAutoDownload     { get; set; }
     public bool   RequiresManualCheck { get; set; }
+
+    /// <summary>
+    /// True when version comparison is unreliable (no stored fileId + version scheme mismatch).
+    /// Entry appears in the "Sync Recommended" section to prompt a one-time re-download.
+    /// Once downloaded through the app, fileId is stored and future tracking is accurate.
+    /// </summary>
+    public bool   IsSyncRequired     { get; set; }
     public string Changelog        { get; set; } = "";  // Nexus changelog
     public string ModioChangelog   { get; set; } = "";  // mod.io changelog
 

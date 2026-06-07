@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:BG3ModHelper.ViewModels"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="{Binding TitleText}"
-        Width="850" Height="1000"
+        Width="850" Height="1150"
         MinWidth="720" MinHeight="500"
         WindowStartupLocation="Manual"
         ResizeMode="CanResizeWithGrip">
@@ -471,6 +471,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="2*"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- ── Active section ── -->
@@ -602,6 +603,67 @@
                     <ScrollViewer x:Name="InactiveScroller"
                                   Grid.Row="2" VerticalScrollBarVisibility="Visible">
                         <ItemsControl ItemsSource="{Binding InactiveEntriesView}"/>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ── Sync Recommended section ── -->
+                <Grid Grid.Row="2"
+                      Visibility="{Binding HasSyncEntries, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>  <!-- section label -->
+                        <RowDefinition Height="Auto"/>  <!-- column headers -->
+                        <RowDefinition Height="Auto"/>  <!-- list (capped height) -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Section label: amber accent for Sync -->
+                    <Border Grid.Row="0" Background="#fffde7" BorderBrush="#e0e0e0" BorderThickness="0,1,0,1">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Left" Width="4" Background="#f5b400"/>
+                            <StackPanel Orientation="Horizontal" Margin="8,4,0,4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SyncSectionHeader}"
+                                           FontSize="11" FontWeight="SemiBold" Foreground="#444444"/>
+                                <TextBlock Text="  —  Version scheme mismatch detected · re-download once to enable accurate tracking"
+                                           FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Column headers with master checkbox -->
+                    <Border Grid.Row="1" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,6,25,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="85"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding SyncMasterChecked, Mode=TwoWay}"
+                                      IsThreeState="True"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                    Command="{Binding SortSyncByNameCommand}">
+                                <TextBlock Text="{Binding SyncNameSortHeader}" Style="{StaticResource ColHeader}"/>
+                            </Button>
+                            <TextBlock Grid.Column="2" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"
+                                       Text="{Binding SyncLockSortHeader}"/>
+                            <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Text="Version"
+                                       Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="6" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="7" Text="Action"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="8" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer x:Name="SyncScroller"
+                                  Grid.Row="2" VerticalScrollBarVisibility="Auto" MaxHeight="200">
+                        <ItemsControl ItemsSource="{Binding SyncEntriesView}"/>
                     </ScrollViewer>
                 </Grid>
             </Grid>

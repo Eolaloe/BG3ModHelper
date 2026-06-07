@@ -50,12 +50,15 @@ public class UpdateNotificationViewModel : ViewModelBase
 
         Entries = new ObservableCollection<UpdateEntryViewModel>(GroupEntries(allVms));
 
-        // Split into active / inactive sections
-        ActiveEntries   = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => e.IsActive));
-        InactiveEntries = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => !e.IsActive));
+        // Split into active / inactive / sync sections
+        ActiveEntries   = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => !e.IsSyncRequired && e.IsActive));
+        InactiveEntries = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => !e.IsSyncRequired && !e.IsActive));
+        SyncEntries     = new ObservableCollection<UpdateEntryViewModel>(Entries.Where(e => e.IsSyncRequired));
 
-        // Inactive entries are deselected by default — user opts in explicitly
+        // Inactive + Sync entries are deselected by default — user opts in explicitly
         foreach (var e in InactiveEntries)
+            e.IsSelected = false;
+        foreach (var e in SyncEntries)
             e.IsSelected = false;
 
         // Subscribe so master-checkbox states stay in sync as rows are toggled
@@ -63,14 +66,17 @@ public class UpdateNotificationViewModel : ViewModelBase
             vm.PropertyChanged += OnEntrySelectionChanged;
         foreach (var vm in InactiveEntries)
             vm.PropertyChanged += OnEntrySelectionChanged;
+        foreach (var vm in SyncEntries)
+            vm.PropertyChanged += OnEntrySelectionChanged;
 
         ActiveEntriesView   = CollectionViewSource.GetDefaultView(ActiveEntries);
         InactiveEntriesView = CollectionViewSource.GetDefaultView(InactiveEntries);
+        SyncEntriesView     = CollectionViewSource.GetDefaultView(SyncEntries);
 
         // Keep EntriesView for backward compat (used by download/skip logic)
         EntriesView = CollectionViewSource.GetDefaultView(Entries);
 
-        foreach (var view in new[] { ActiveEntriesView, InactiveEntriesView, EntriesView })
+        foreach (var view in new[] { ActiveEntriesView, InactiveEntriesView, SyncEntriesView, EntriesView })
         {
             if (view is System.ComponentModel.ICollectionViewLiveShaping lv)
             {
@@ -87,12 +93,15 @@ public class UpdateNotificationViewModel : ViewModelBase
         SortInactiveByNameCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Name));
         SortInactiveBySourceCommand = new RelayCommand(() => ToggleSortInactive(SortCol.Source));
         SortInactiveByLockCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Lock));
+        SortSyncByNameCommand = new RelayCommand(() => ToggleSortSync(SortCol.Name));
         ApplySort();
 
         SelectAllActiveCommand   = new RelayCommand(() => SetSectionSelected(active: true,  selected: true));
         DeselectAllActiveCommand = new RelayCommand(() => SetSectionSelected(active: true,  selected: false));
         SelectAllInactiveCommand   = new RelayCommand(() => SetSectionSelected(active: false, selected: true));
         DeselectAllInactiveCommand = new RelayCommand(() => SetSectionSelected(active: false, selected: false));
+        SelectAllSyncCommand   = new RelayCommand(() => SetSyncSelected(true));
+        DeselectAllSyncCommand = new RelayCommand(() => SetSyncSelected(false));
         SelectAllCommand        = new RelayCommand(() => SetAllSelected(true));
         DeselectAllCommand      = new RelayCommand(() => SetAllSelected(false));
         DownloadSelectedCommand = new RelayCommand(
@@ -118,9 +127,12 @@ public class UpdateNotificationViewModel : ViewModelBase
     public ObservableCollection<UpdateEntryViewModel> Entries         { get; }
     public ObservableCollection<UpdateEntryViewModel> ActiveEntries   { get; }
     public ObservableCollection<UpdateEntryViewModel> InactiveEntries { get; }
+    public ObservableCollection<UpdateEntryViewModel> SyncEntries     { get; }
 
     public string ActiveSectionHeader   => $"Active Mods ({ActiveEntries.Count})";
     public string InactiveSectionHeader => $"Inactive Mods ({InactiveEntries.Count})";
+    public string SyncSectionHeader     => $"Sync Recommended ({SyncEntries.Count})";
+    public bool   HasSyncEntries        => SyncEntries.Count > 0;
 
     // Suppresses per-entry PropertyChanged notifications while a mass select/deselect loop is running.
     // Prevents intermediate null states from corrupting the IsThreeState click cycle via binding feedback.
@@ -168,6 +180,21 @@ public class UpdateNotificationViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Tri-state master checkbox for the Sync section.
+    /// </summary>
+    public bool? SyncMasterChecked
+    {
+        get
+        {
+            var queued = SyncEntries.Where(e => e.CanBeQueued).ToList();
+            if (queued.Count == 0) return false;
+            var selected = queued.Count(e => e.IsSelected);
+            return selected == 0 ? false : selected == queued.Count ? true : (bool?)null;
+        }
+        set => SetSyncSelected(value == true);
+    }
+
     private void OnEntrySelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(UpdateEntryViewModel.IsSelected)) return;
@@ -176,13 +203,16 @@ public class UpdateNotificationViewModel : ViewModelBase
         {
             if (ActiveEntries.Contains(vm))
                 OnPropertyChanged(nameof(ActiveMasterChecked));
-            else
+            else if (InactiveEntries.Contains(vm))
                 OnPropertyChanged(nameof(InactiveMasterChecked));
+            else
+                OnPropertyChanged(nameof(SyncMasterChecked));
         }
     }
 
     public ICollectionView ActiveEntriesView   { get; }
     public ICollectionView InactiveEntriesView { get; }
+    public ICollectionView SyncEntriesView     { get; }
 
     private string _titleText = "";
     public string TitleText
@@ -278,6 +308,10 @@ public class UpdateNotificationViewModel : ViewModelBase
     private SortCol _inactiveSortColumn    = SortCol.Name;
     private bool    _inactiveSortAscending = true;
 
+    // Sync section sort state
+    private SortCol _syncSortColumn    = SortCol.Name;
+    private bool    _syncSortAscending = true;
+
     public ICollectionView EntriesView { get; }
 
     // ── Active header texts ──────────────────────────────────────────────────
@@ -289,6 +323,10 @@ public class UpdateNotificationViewModel : ViewModelBase
     public string InactiveNameSortHeader   => _inactiveSortColumn == SortCol.Name   ? (_inactiveSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
     public string InactiveSourceSortHeader => _inactiveSortColumn == SortCol.Source ? (_inactiveSortAscending ? "Source ↑" : "Source ↓") : "Source ⇅";
     public string InactiveLockSortHeader   => _inactiveSortColumn == SortCol.Lock   ? (_inactiveSortAscending ? "↑" : "↓") : "⇅";
+
+    // ── Sync header texts ─────────────────────────────────────────────────────
+    public string SyncNameSortHeader => _syncSortColumn == SortCol.Name ? (_syncSortAscending ? "Name ↑" : "Name ↓") : "Name ⇅";
+    public string SyncLockSortHeader => _syncSortColumn == SortCol.Lock ? (_syncSortAscending ? "↑" : "↓") : "⇅";
 
     // Keep old names as pass-through so any lingering bindings don't crash
     public string NameSortHeader   => ActiveNameSortHeader;
@@ -303,6 +341,11 @@ public class UpdateNotificationViewModel : ViewModelBase
     public RelayCommand SortInactiveByNameCommand   { get; }
     public RelayCommand SortInactiveBySourceCommand { get; }
     public RelayCommand SortInactiveByLockCommand   { get; }
+
+    // ── Sync commands ─────────────────────────────────────────────────────────
+    public RelayCommand SortSyncByNameCommand { get; }
+    public RelayCommand SelectAllSyncCommand   { get; }
+    public RelayCommand DeselectAllSyncCommand { get; }
 
     // Kept for backward compat
     public RelayCommand SortByNameCommand   => SortActiveByNameCommand;
@@ -328,6 +371,30 @@ public class UpdateNotificationViewModel : ViewModelBase
         OnPropertyChanged(nameof(InactiveLockSortHeader));
     }
 
+    private void ToggleSortSync(SortCol col)
+    {
+        if (_syncSortColumn == col) _syncSortAscending = !_syncSortAscending;
+        else { _syncSortColumn = col; _syncSortAscending = true; }
+        ApplySortToView(SyncEntriesView, _syncSortColumn, _syncSortAscending);
+        OnPropertyChanged(nameof(SyncNameSortHeader));
+        OnPropertyChanged(nameof(SyncLockSortHeader));
+    }
+
+    private void SetSyncSelected(bool selected)
+    {
+        _suppressMasterNotify = true;
+        try
+        {
+            foreach (var e in SyncEntries)
+                e.IsSelected = selected;
+        }
+        finally
+        {
+            _suppressMasterNotify = false;
+        }
+        OnPropertyChanged(nameof(SyncMasterChecked));
+    }
+
     private static void ApplySortToView(ICollectionView view, SortCol col, bool ascending)
     {
         var dir = ascending ? ListSortDirection.Ascending : ListSortDirection.Descending;
@@ -350,9 +417,10 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private void ApplySort()
     {
-        // Apply initial sort to both sections independently (called once at construction)
+        // Apply initial sort to all sections independently (called once at construction)
         ApplySortToView(ActiveEntriesView,   _activeSortColumn,   _activeSortAscending);
         ApplySortToView(InactiveEntriesView, _inactiveSortColumn, _inactiveSortAscending);
+        ApplySortToView(SyncEntriesView,     _syncSortColumn,     _syncSortAscending);
         // EntriesView mirrors Active sort for legacy download/skip logic
         ApplySortToView(EntriesView,         _activeSortColumn,   _activeSortAscending);
     }
@@ -415,8 +483,11 @@ public class UpdateNotificationViewModel : ViewModelBase
             Entries.Remove(e);
             ActiveEntries.Remove(e);
             InactiveEntries.Remove(e);
+            SyncEntries.Remove(e);
         }
 
+        OnPropertyChanged(nameof(SyncSectionHeader));
+        OnPropertyChanged(nameof(HasSyncEntries));
         UpdateSummary();
         RefreshCommand.RaiseCanExecuteChanged();
     }
@@ -803,19 +874,23 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private void UpdateSummary()
     {
-        var total       = Entries.Count;
-        var autoCount   = Entries.Count(e => e.CanAutoDownload && e.IsActionEnabled);
+        var updateTotal = Entries.Count(e => !e.IsSyncRequired);
+        var syncCount   = SyncEntries.Count;
+        var autoCount   = Entries.Count(e => !e.IsSyncRequired && e.CanAutoDownload && e.IsActionEnabled);
         var doneCount   = Entries.Count(e => e.Status == UpdateStatus.Updated);
-        var manualCount = Entries.Count(e => !e.CanAutoDownload && !e.IsNexusUnregistered);
+        var manualCount = Entries.Count(e => !e.IsSyncRequired && !e.CanAutoDownload && !e.IsNexusUnregistered);
         var unregCount  = Entries.Count(e => e.IsNexusUnregistered);
 
-        TitleText = $"{total} Updates Available";
+        TitleText = updateTotal > 0
+            ? $"{updateTotal} Updates Available"
+            : syncCount > 0 ? "Sync Recommended" : "All Up To Date";
 
         var parts = new List<string>();
         if (doneCount   > 0) parts.Add($"{doneCount} done");
         if (autoCount   > 0) parts.Add($"{autoCount} auto-download");
         if (manualCount > 0) parts.Add($"{manualCount} manual");
         if (unregCount  > 0) parts.Add($"{unregCount} Nexus unlinked");
+        if (syncCount   > 0) parts.Add($"{syncCount} sync-needed");
         SummaryText = string.Join(" · ", parts);
     }
 }

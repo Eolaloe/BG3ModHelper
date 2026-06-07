@@ -163,9 +163,11 @@ public partial class UpdateEntryViewModel : ViewModelBase
     }
 
     public string Changelog =>
-        _entry.RequiresManualCheck
-            ? "File mapping uncertain — please verify the correct file on the mod page."
-            : ActiveSource == UpdateSource.MODIO ? _entry.ModioChangelog : _entry.Changelog;
+        IsSyncRequired
+            ? "Version scheme mismatch detected — the installed file's internal version differs from the Nexus listing. Re-downloading once will store the file ID for accurate update tracking."
+            : _entry.RequiresManualCheck
+                ? "File mapping uncertain — please verify the correct file on the mod page."
+                : ActiveSource == UpdateSource.MODIO ? _entry.ModioChangelog : _entry.Changelog;
 
     public string VersionDisplay =>
         string.IsNullOrEmpty(NewVersion)
@@ -210,9 +212,10 @@ public partial class UpdateEntryViewModel : ViewModelBase
         }
     }
 
-    public bool HasModio  => _entry.AvailableSources.Contains(UpdateSource.MODIO);
-    public bool HasNexus  => _entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
-    public bool IsActive  => _entry.IsActive;
+    public bool HasModio       => _entry.AvailableSources.Contains(UpdateSource.MODIO);
+    public bool HasNexus       => _entry.AvailableSources.Contains(UpdateSource.NEXUSMODS);
+    public bool IsActive       => _entry.IsActive;
+    public bool IsSyncRequired => _entry.IsSyncRequired;
     public bool IsNexusUnregistered =>
         !HasModio && !HasNexus && _entry.NexusModId == null;
 
@@ -286,10 +289,10 @@ public partial class UpdateEntryViewModel : ViewModelBase
     {
         get
         {
-            if (IsNexusUnregistered)   return "Link Nexus";
+            if (IsNexusUnregistered)          return "Link Nexus";
             if (Status == UpdateStatus.Retry) return "Retry";
             if (IsDownloadingOrApplying)      return "■ Stop";
-            if (CanAutoDownload)              return "Download";
+            if (CanAutoDownload)              return IsSyncRequired ? "Re-download" : "Download";
             return "Open Page";
         }
     }

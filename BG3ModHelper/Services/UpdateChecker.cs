@@ -194,6 +194,28 @@ public static class UpdateChecker
                     if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
                         contributions.Add(new ContributeEntry(
                             dbEntry.PakFileName, mod.MetaUuid, dbEntry.NexusModId, dbEntry.NexusFileId));
+
+                // Sync-required: no stored fileId AND version comparison unreliable
+                // (version inverted, unparseable suffix, etc.)
+                // Flags the entry for the "Sync Recommended" section — one re-download stores
+                // the fileId and enables accurate tracking from then on.
+                if (!hasUpdate && entry == null)
+                {
+                    var localFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                    if (localFileId == null && IsVersionSyncRequired(mod.MetaVersion, dbEntry.NexusFileVersion))
+                    {
+                        entry = EnsureEntry(entries, mod);
+                        entry.NexusFileVersion = dbEntry.NexusFileVersion;
+                        entry.NexusFileId      = dbEntry.NexusFileId;
+                        entry.UpdateNewVersion = dbEntry.NexusFileVersion;
+                        entry.NexusModPageUrl  = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{dbEntry.NexusModId}";
+                        entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                        entry.IsSyncRequired   = true;
+                        if (!string.IsNullOrEmpty(dbEntry.NexusModName))
+                            entry.NexusModName = dbEntry.NexusModName;
+                        Logger.Debug($"Nexus [{mod.MetaModuleName}] sync-required: installed={mod.MetaVersion} db={dbEntry.NexusFileVersion}");
+                    }
+                }
                 }
                 else
                 {
@@ -300,6 +322,44 @@ public static class UpdateChecker
 
         cache.LastUpdated = DateTime.UtcNow;
         Logger.Info($"UpdateChecker: mod.io cache refresh complete ({batch.Count} mods)");
+    }
+
+    // === Sync-required detection ===
+
+    /// <summary>
+    /// Returns true when version comparison between installed and DB is unreliable,
+    /// indicating a sync re-download is needed to establish accurate fileId tracking.
+    /// Triggers: installed numerically higher than DB, unparseable suffixes, or format mismatch.
+    /// </summary>
+    private static bool IsVersionSyncRequired(string installedVersion, string dbVersion)
+    {
+        if (string.IsNullOrWhiteSpace(installedVersion) || string.IsNullOrWhiteSpace(dbVersion))
+            return false;
+
+        var c = Normalize(dbVersion);
+        var v = Normalize(installedVersion);
+
+        if (string.Equals(c, v, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var cBase = ExtractNumericBase(c);
+        var vBase = ExtractNumericBase(v);
+
+        var cVer = ToFourPart(cBase);
+        var vVer = ToFourPart(vBase);
+
+        // Either side unparseable → unreliable comparison
+        if (cVer == null || vVer == null) return true;
+
+        // Installed numerically higher than DB → likely different versioning schemes
+        if (vVer > cVer) return true;
+
+        // One has non-numeric suffix, the other doesn't (e.g. "1.0.0" vs "1.0.0kr")
+        bool cHasSuffix = !string.Equals(c, cBase, StringComparison.OrdinalIgnoreCase);
+        bool vHasSuffix = !string.Equals(v, vBase, StringComparison.OrdinalIgnoreCase);
+        if (cHasSuffix != vHasSuffix) return true;
+
+        return false;
     }
 
     // === Version comparison ===
