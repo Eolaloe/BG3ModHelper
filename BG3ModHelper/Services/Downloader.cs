@@ -119,6 +119,23 @@ public static class Downloader
 
             // Invalidate cache for all installed paks
             var primaryDest = Path.Combine(modsFolder, Path.GetFileName(primaryFile));
+
+            // Enqueue verified contribution — flushed on next update check.
+            // modId + fileId are confirmed by the caller (from Nexus API / update entry),
+            // so this mapping is download-verified (higher trust than scan-based contributions).
+            if (!string.IsNullOrEmpty(uuid) && modId != 0 && fileId != 0)
+            {
+                try
+                {
+                    var verifiedStore = new PendingVerifiedContributionStore();
+                    verifiedStore.Load();
+                    verifiedStore.Add(Path.GetFileName(primaryDest), uuid, modId, fileId);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Downloader: pending verified store update failed — {ex.Message}");
+                }
+            }
             InvalidateCache(existingPakPath, primaryDest);
             foreach (var path in installedPaths.Where(p => p != primaryDest))
                 InvalidateCache(path, path);
@@ -432,6 +449,21 @@ public static class Downloader
 
             if (fileIdStore != null && !string.IsNullOrEmpty(target.Uuid) && target.FileId != 0)
                 fileIdStore.SetFileId(target.Uuid, target.ModId, target.FileId, target.FileName);
+
+            // Enqueue verified contribution for group download target
+            if (!string.IsNullOrEmpty(target.Uuid) && target.ModId != 0 && target.FileId != 0)
+            {
+                try
+                {
+                    var verifiedStore = new PendingVerifiedContributionStore();
+                    verifiedStore.Load();
+                    verifiedStore.Add(Path.GetFileName(destPath), target.Uuid, target.ModId, target.FileId);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Downloader: pending verified store update failed (group) — {ex.Message}");
+                }
+            }
 
             InvalidateCache(target.ExistingPakPath, destPath);
             Logger.Info($"Downloader: installed {Path.GetFileName(destPath)} (group {i + 1}/{targets.Count})");

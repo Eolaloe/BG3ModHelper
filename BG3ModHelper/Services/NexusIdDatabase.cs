@@ -175,12 +175,14 @@ public class NexusIdDatabase
 
     /// <summary>
     /// Submits a batch of UUID contributions in a single request.
-    /// Only called for DB entries where uuid == null.
+    /// Returns true if the server accepted the payload (2xx), false otherwise.
+    /// Verified entries (from direct app downloads) are flagged in the payload so the
+    /// community DB can accept them with a lower vote threshold.
     /// </summary>
-    public async Task ContributeBatchAsync(List<ContributeEntry> entries)
+    public async Task<bool> ContributeBatchAsync(List<ContributeEntry> entries)
     {
-        if (string.IsNullOrEmpty(Constants.NEXUS_UUID_SUBMIT_URL)) return;
-        if (entries.Count == 0) return;
+        if (string.IsNullOrEmpty(Constants.NEXUS_UUID_SUBMIT_URL)) return false;
+        if (entries.Count == 0) return true; // nothing to send = vacuous success
 
         try
         {
@@ -190,13 +192,22 @@ public class NexusIdDatabase
 
             var resp = await _http.PostAsync(Constants.NEXUS_UUID_SUBMIT_URL, content);
             if (resp.IsSuccessStatusCode)
-                Logger.Info($"NexusIdDatabase: contributed {entries.Count} UUID(s)");
+            {
+                var verifiedCount = entries.Count(e => e.Verified);
+                Logger.Info($"NexusIdDatabase: contributed {entries.Count} UUID(s)" +
+                            (verifiedCount > 0 ? $" ({verifiedCount} verified)" : ""));
+                return true;
+            }
             else
+            {
                 Logger.Warn($"NexusIdDatabase: contribution rejected — {(int)resp.StatusCode}");
+                return false;
+            }
         }
         catch (Exception ex)
         {
             Logger.Warn($"NexusIdDatabase: contribution failed — {ex.Message}");
+            return false;
         }
     }
 
@@ -380,12 +391,22 @@ public class ContributeEntry
     [JsonProperty("nexusModId")]   public int    NexusModId   { get; set; }
     [JsonProperty("nexusFileId")]  public long   NexusFileId  { get; set; }
 
+    /// <summary>
+    /// True when this mapping was confirmed by a direct download through the app
+    /// (nxm:// or built-in downloader). The community DB server applies a lower
+    /// vote threshold for verified entries.
+    /// </summary>
+    [JsonProperty("verified", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool Verified { get; set; }
+
     public ContributeEntry() { }
-    public ContributeEntry(string pakFileName, string metaUuid, int nexusModId, long nexusFileId)
+    public ContributeEntry(string pakFileName, string metaUuid, int nexusModId, long nexusFileId,
+                           bool verified = false)
     {
         PakFileName = pakFileName;
         MetaUuid    = metaUuid;
         NexusModId  = nexusModId;
         NexusFileId = nexusFileId;
+        Verified    = verified;
     }
 }

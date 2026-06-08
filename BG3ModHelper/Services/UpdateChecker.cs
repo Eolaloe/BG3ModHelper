@@ -267,11 +267,42 @@ public static class UpdateChecker
 
         Logger.Info($"UpdateChecker: {entries.Count} update(s) found out of {installedMods.Count} mods");
 
-        // Send UUID contributions in a single batch request
+        // Merge pending verified contributions (from prior downloads) with regular scan contributions.
+        // Verified entries are cleared only after a confirmed successful send.
+        var verifiedStore = new PendingVerifiedContributionStore();
+        verifiedStore.Load();
+        var pendingVerified = verifiedStore.GetAll();
+
+        foreach (var v in pendingVerified)
+            contributions.Add(new ContributeEntry(v.PakFileName, v.MetaUuid, v.NexusModId, v.NexusFileId,
+                                                  verified: true));
+
+        if (pendingVerified.Count > 0)
+            Logger.Info($"UpdateChecker: including {pendingVerified.Count} pending verified contribution(s)");
+
+        // Send all contributions in a single batch request
         if (nexusDb != null && contributions.Count > 0)
-            _ = LogIfFails(nexusDb.ContributeBatchAsync(contributions), "ContributeBatchAsync");
+            _ = LogIfFails(
+                SendContributionsAsync(nexusDb, contributions, verifiedStore, pendingVerified.Count),
+                "ContributeBatchAsync");
 
         return [.. entries.Values];
+    }
+
+    /// <summary>
+    /// Sends all contributions and, on success, clears the verified pending queue.
+    /// Verified entries are only cleared when the server confirms receipt (2xx) so
+    /// they are retried on the next update check if the request fails.
+    /// </summary>
+    private static async Task SendContributionsAsync(
+        NexusIdDatabase db,
+        List<ContributeEntry> entries,
+        PendingVerifiedContributionStore verifiedStore,
+        int verifiedCount)
+    {
+        bool ok = await db.ContributeBatchAsync(entries);
+        if (ok && verifiedCount > 0)
+            verifiedStore.Clear();
     }
 
     /// <summary>Logs exceptions from a fire-and-forget task.</summary>

@@ -115,7 +115,7 @@ public static class NxmInstaller
 
             var pakFileName = Path.GetFileName(installedPath);
 
-            // 1) Local store — nexusFileName is the Nexus display name (e.g. "Main File")
+            // 1) Local fileId store — nexusFileName is the Nexus display name (e.g. "Main File")
             try
             {
                 var fileIdStore = new ModFileIdStore();
@@ -127,7 +127,21 @@ public static class NxmInstaller
                 Logger.Warn($"NxmInstaller: local fileId store update failed — {ex.Message}");
             }
 
-            // 2) Community DB
+            // 2) Pending verified contribution queue — flushed on next update check
+            // nxm:// downloads have a confirmed modId+fileId from the URL, so the
+            // resulting UUID mapping is download-verified (higher trust than scan-based).
+            try
+            {
+                var verifiedStore = new PendingVerifiedContributionStore();
+                verifiedStore.Load();
+                verifiedStore.Add(pakFileName, pak.MetaUuid, modId, fileId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"NxmInstaller: pending verified store update failed — {ex.Message}");
+            }
+
+            // 3) Community DB (immediate, best-effort)
             var db = new NexusIdDatabase();
             await db.ContributeUuidAsync(pakFileName, pak.MetaUuid, modId, fileId);
         }
