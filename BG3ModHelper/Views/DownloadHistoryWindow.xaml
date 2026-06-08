@@ -152,12 +152,8 @@
                                    VerticalAlignment="Center"
                                    ToolTipService.InitialShowDelay="200"
                                    ToolTipService.Placement="Mouse"
-                                   Cursor="Help">
-                            <TextBlock.ToolTip>
-                                <ToolTip Content="{Binding RenameTooltip}"
-                                         Visibility="{Binding WasRenamed, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            </TextBlock.ToolTip>
-                        </TextBlock>
+                                   Cursor="Help"
+                                   ToolTip="{Binding StatusTooltip}"/>
                     </Grid>
 
                     <!-- group children panel -->
@@ -201,7 +197,11 @@
                                                Foreground="{Binding StatusColor}"
                                                FontSize="11" FontWeight="SemiBold"
                                                HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
+                                               VerticalAlignment="Center"
+                                               ToolTipService.InitialShowDelay="200"
+                                               ToolTipService.Placement="Mouse"
+                                               Cursor="Help"
+                                               ToolTip="{Binding StatusTooltip}"/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

@@ -173,9 +173,25 @@ public class DownloadHistoryEntryViewModel : ViewModelBase
     public bool   WasRenamed   => !string.IsNullOrEmpty(_entry.HistoryReplacedPakFileName);
     public string StatusMark  => WasRenamed ? "↺" : (_entry.HistorySuccess ? "✓" : "✗");
     public string StatusColor => WasRenamed ? "#ffc107" : (_entry.HistorySuccess ? "#4caf50" : "#f44336");
-    public string? RenameTooltip => WasRenamed
-        ? $"{_entry.HistoryReplacedPakFileName}\n→ {_entry.HistoryPakFileName ?? _entry.HistoryModName}"
-        : null;
+
+    /// <summary>
+    /// Tooltip shown on the status mark for all entries.
+    /// Shows which pak file(s) changed and the version transition.
+    /// </summary>
+    public string StatusTooltip
+    {
+        get
+        {
+            // Rename: show old pak filename → new pak filename
+            if (WasRenamed)
+                return $"{_entry.HistoryReplacedPakFileName}\n→  {_entry.HistoryPakFileName ?? _entry.HistoryModName}";
+
+            // Normal install/update: show the installed pak filename
+            var pak = _entry.HistoryPakFileName;
+            if (string.IsNullOrEmpty(pak)) pak = _entry.HistoryModName;
+            return !_entry.HistorySuccess ? $"{pak}\n(Download failed)" : pak;
+        }
+    }
 
     public bool CanOpenPage => !string.IsNullOrEmpty(_entry.HistoryPageUrl);
 
