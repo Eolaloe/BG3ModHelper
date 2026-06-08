@@ -171,6 +171,8 @@ public static class UpdateChecker
                                 entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
                                 if (!string.IsNullOrEmpty(dbEntry.NexusModName))
                                     entry.NexusModName = dbEntry.NexusModName;
+                                if (!string.IsNullOrEmpty(latestFile.NexusFileName))
+                                    entry.NexusFileName = latestFile.NexusFileName;
                                 Logger.Info($"Nexus [{mod.MetaModuleName}] stale DB fallback — update detected: DB fileId={dbEntry.NexusFileId} → API fileId={latestFile.NexusFileId}");
                             }
                         }
@@ -189,6 +191,8 @@ public static class UpdateChecker
                         entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
                         if (!string.IsNullOrEmpty(dbEntry.NexusModName))
                             entry.NexusModName = dbEntry.NexusModName;
+                        if (!string.IsNullOrEmpty(dbEntry.NexusFileName))
+                            entry.NexusFileName = dbEntry.NexusFileName;
                     }
 
                     if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
@@ -213,16 +217,43 @@ public static class UpdateChecker
                         entry.IsSyncRequired   = true;
                         if (!string.IsNullOrEmpty(dbEntry.NexusModName))
                             entry.NexusModName = dbEntry.NexusModName;
+                        if (!string.IsNullOrEmpty(dbEntry.NexusFileName))
+                            entry.NexusFileName = dbEntry.NexusFileName;
                         Logger.Debug($"Nexus [{mod.MetaModuleName}] sync-required: installed={mod.MetaVersion} db={dbEntry.NexusFileVersion}");
                     }
                 }
                 }
                 else
                 {
-                    // API fallback: no DB entry but modId known and in recentlyUpdated
                     var knownModId = mod.NexusModId
                         ?? fileIdStore?.GetEntry(mod.MetaUuid)?.NexusModId;
 
+                    // Pak-rename detection (DB-only, no API calls).
+                    // If the installed pakFileName has no DB match but the mod is known and has
+                    // current entries under a different pak name, the author renamed the pak in a
+                    // newer version. Flag for manual check so the user isn't silently left behind.
+                    if (dbEntries.Count == 0 && nexusDb != null && knownModId.HasValue)
+                    {
+                        var modPaks = nexusDb.LookupByModId(knownModId.Value);
+                        if (modPaks.Count > 0)
+                        {
+                            var latest         = modPaks.OrderByDescending(p => p.NexusFileId).First();
+                            var availableNames = string.Join(", ", modPaks.Select(p => p.PakFileName).Distinct());
+                            entry = EnsureEntry(entries, mod);
+                            entry.NexusModPageUrl     = $"https://www.nexusmods.com/{Constants.NEXUS_GAME_DOMAIN}/mods/{knownModId.Value}";
+                            entry.RequiresManualCheck = true;
+                            entry.NexusFileId         = latest.NexusFileId;
+                            entry.NexusFileVersion    = latest.NexusFileVersion;
+                            entry.UpdateNewVersion    = latest.NexusFileVersion;
+                            entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                            entry.Changelog           = $"Pak file renamed or reorganized — current Nexus file(s): {availableNames}. Please verify on the mod page.";
+                            if (!string.IsNullOrEmpty(latest.NexusModName))  entry.NexusModName  = latest.NexusModName;
+                            if (!string.IsNullOrEmpty(latest.NexusFileName)) entry.NexusFileName = latest.NexusFileName;
+                            Logger.Info($"Nexus [{mod.MetaModuleName}] pak renamed: installed={mod.PakFileName} current=[{availableNames}]");
+                        }
+                    }
+
+                    // API fallback: no DB entry but modId known and in recentlyUpdated
                     if (nexusApi != null && knownModId.HasValue &&
                         recentlyUpdated.Count > 0 && recentlyUpdated.Contains(knownModId.Value))
                     {
@@ -252,6 +283,8 @@ public static class UpdateChecker
                                 var modName = modNameTask.Result;
                                 if (!string.IsNullOrEmpty(modName))
                                     entry.NexusModName = modName;
+                                if (!string.IsNullOrEmpty(latestFile.NexusFileName))
+                                    entry.NexusFileName = latestFile.NexusFileName;
                             }
                         }
                     }

@@ -120,6 +120,33 @@ public static class Downloader
             // Invalidate cache for all installed paks
             var primaryDest = Path.Combine(modsFolder, Path.GetFileName(primaryFile));
 
+            // Pak-rename cleanup: if the archive's primary pak has a different filename
+            // than the existing pak, the old file was not overwritten — it stays on disk
+            // and causes a phantom update loop (old UUID re-scanned, fileId mismatch forever).
+            // Remove it the same way FindDuplicatePak removes same-UUID renames.
+            if (!string.IsNullOrEmpty(existingPakPath) &&
+                !string.Equals(Path.GetFileName(primaryDest), Path.GetFileName(existingPakPath),
+                                StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(existingPakPath))
+            {
+                try
+                {
+                    if (backupEnabled)
+                        BackupExistingPak(existingPakPath);
+                    else
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                            existingPakPath,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    InvalidateCache(existingPakPath, existingPakPath);
+                    Logger.Info($"Downloader: {(backupEnabled ? "backed up" : "removed")} renamed pak {Path.GetFileName(existingPakPath)} → {Path.GetFileName(primaryDest)}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Downloader: failed to remove renamed pak {Path.GetFileName(existingPakPath)} — {ex.Message}");
+                }
+            }
+
             // Enqueue verified contribution — flushed on next update check.
             // modId + fileId are confirmed by the caller (from Nexus API / update entry),
             // so this mapping is download-verified (higher trust than scan-based contributions).
@@ -449,6 +476,30 @@ public static class Downloader
 
             if (fileIdStore != null && !string.IsNullOrEmpty(target.Uuid) && target.FileId != 0)
                 fileIdStore.SetFileId(target.Uuid, target.ModId, target.FileId, target.FileName);
+
+            // Pak-rename cleanup for group download (same logic as single download)
+            if (!string.IsNullOrEmpty(target.ExistingPakPath) &&
+                !string.Equals(Path.GetFileName(destPath), Path.GetFileName(target.ExistingPakPath),
+                                StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(target.ExistingPakPath))
+            {
+                try
+                {
+                    if (backupEnabled)
+                        BackupExistingPak(target.ExistingPakPath);
+                    else
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                            target.ExistingPakPath,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    InvalidateCache(target.ExistingPakPath, target.ExistingPakPath);
+                    Logger.Info($"Downloader: {(backupEnabled ? "backed up" : "removed")} renamed pak {Path.GetFileName(target.ExistingPakPath)} → {Path.GetFileName(destPath)} (group)");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"Downloader: failed to remove renamed pak {Path.GetFileName(target.ExistingPakPath)} — {ex.Message}");
+                }
+            }
 
             // Enqueue verified contribution for group download target
             if (!string.IsNullOrEmpty(target.Uuid) && target.ModId != 0 && target.FileId != 0)

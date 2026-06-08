@@ -16,7 +16,9 @@ public class ModUpdateEntry
     public string NexusFileVersion { get; set; } = "";
 
     // Recorded after download for accurate update detection (spec §4.11)
-    public long NexusFileId { get; set; }
+    public long   NexusFileId   { get; set; }
+    /// <summary>Nexus file display name for the specific variant, e.g. "Better Map 0.85 scale".</summary>
+    public string NexusFileName { get; set; } = "";
 
     public UpdateSource        DefaultSource    { get; set; }
     public List<UpdateSource>  AvailableSources { get; set; } = new();

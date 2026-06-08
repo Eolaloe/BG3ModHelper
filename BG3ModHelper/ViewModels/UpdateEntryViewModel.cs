@@ -166,7 +166,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         IsSyncRequired
             ? "Version scheme mismatch detected — the installed file's internal version differs from the Nexus listing. Re-downloading once will store the file ID for accurate update tracking."
             : _entry.RequiresManualCheck
-                ? "File mapping uncertain — please verify the correct file on the mod page."
+                ? (!string.IsNullOrEmpty(_entry.Changelog)
+                    ? _entry.Changelog
+                    : "File mapping uncertain — please verify the correct file on the mod page.")
                 : ActiveSource == UpdateSource.MODIO ? _entry.ModioChangelog : _entry.Changelog;
 
     public string VersionDisplay =>
@@ -240,6 +242,7 @@ public partial class UpdateEntryViewModel : ViewModelBase
 
     public bool CanAutoDownload =>
         !IsNexusUnregistered &&
+        !_entry.RequiresManualCheck &&
         (ActiveSource == UpdateSource.MODIO ||
          (ActiveSource == UpdateSource.NEXUSMODS && _nexusIsPremium));
 
@@ -578,27 +581,39 @@ public partial class UpdateEntryViewModel : ViewModelBase
         if (_nexusApi == null || _entry.NexusModId == null)
             throw new InvalidOperationException("Nexus API key is not configured, or this mod has no Nexus ID.");
 
-        // Step 1: latest file metadata (get fileId)
-        var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value)
-            ?? throw new InvalidOperationException(
-                $"Could not retrieve file list for Nexus mod {_entry.NexusModId}.\n" +
-                "(Check logs for the exact server response — 403/429/404)");
+        // Use the specific fileId stored in the update entry (set by UpdateChecker from the DB).
+        // This is critical for mods that ship multiple variants under one modId (e.g. "Better Map
+        // 0.85 scale" vs "Better Map 1.2 scale") — GetLatestFileAsync would return the highest fileId
+        // regardless of which variant the user has installed, causing the wrong file to be downloaded.
+        // Fall back to GetLatestFileAsync only when no fileId is recorded (rare: API-fallback path).
+        long   targetFileId   = _entry.NexusFileId;
+        string targetFileName = _entry.NexusFileName;
 
-        // Step 2: Premium download URL (download_link.json)
-        var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, latest.NexusFileId);
+        if (targetFileId == 0)
+        {
+            var latest = await _nexusApi.GetLatestFileAsync(_entry.NexusModId.Value)
+                ?? throw new InvalidOperationException(
+                    $"Could not retrieve file list for Nexus mod {_entry.NexusModId}.\n" +
+                    "(Check logs for the exact server response — 403/429/404)");
+            targetFileId   = latest.NexusFileId;
+            targetFileName = latest.NexusFileName;
+        }
+
+        // Premium download URL (download_link.json)
+        var url = await _nexusApi.GetDownloadUrlAsync(_entry.NexusModId.Value, targetFileId);
         if (string.IsNullOrEmpty(url))
         {
             // 403 on download_link for a premium account → manager downloads disabled by mod author
             if (_nexusApi.LastStatusCode == 403)
                 throw new ManagerDownloadDisabledException(
-                    $"Manager downloads are disabled for mod {_entry.NexusModId} (file {latest.NexusFileId}).");
+                    $"Manager downloads are disabled for mod {_entry.NexusModId} (file {targetFileId}).");
 
             throw new InvalidOperationException(
-                $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {latest.NexusFileId}).\n" +
+                $"Nexus did not return a download URL for mod {_entry.NexusModId} (file {targetFileId}).\n" +
                 "(If this persists, verify that your API key has Premium access.)");
         }
 
-        return (url, latest.NexusFileId, latest.NexusFileName);
+        return (url, targetFileId, targetFileName);
     }
 
     // === Action dispatch ===
