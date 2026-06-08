@@ -90,7 +90,7 @@ public partial class SettingsWindow : Window
         WatchFolderBox.Text = !string.IsNullOrEmpty(_settings.WatchedDownloadFolder)
             ? _settings.WatchedDownloadFolder
             : BG3ModHelper.Services.FolderWatcherService.GetDefaultDownloadsFolder();
-        var ver = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        var ver = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(4) ?? "0.0.0";
         VersionRun.Text = $"{ver}  ({Constants.RELEASE_NAME})";
 
         // nxm handler state — suppress event during initial bind
