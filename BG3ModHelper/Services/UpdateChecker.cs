@@ -52,9 +52,10 @@ public static class UpdateChecker
             ModioApi.SaveCache(modioCache);
 
         // === Build update entries ===
-        var entries      = new Dictionary<string, ModUpdateEntry>();
-        var checkedCount = 0;
-        var contributions = new List<ContributeEntry>();
+        var entries        = new Dictionary<string, ModUpdateEntry>();
+        var checkedCount   = 0;
+        var disambigCount  = 0;
+        var contributions  = new List<ContributeEntry>();
 
         foreach (var mod in installedMods)
         {
@@ -222,7 +223,8 @@ public static class UpdateChecker
                             e.NexusFileVersion ?? ""))
                         .ToList();
                     entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
-                    Logger.Info($"Nexus [{mod.MetaModuleName}] ambiguous pak match ({dbEntries.Count} candidates) — needs user disambiguation");
+                    disambigCount++;
+                    Logger.Debug($"Nexus [{mod.MetaModuleName}] ambiguous pak match ({dbEntries.Count} candidates) — needs user disambiguation");
                 }
 
                 // Upgrade to latest fileId for the resolved modId.
@@ -283,7 +285,7 @@ public static class UpdateChecker
                         nexusDb.IsStale &&
                         recentlyUpdated.Contains(dbEntry.NexusModId))
                     {
-                        Logger.Info($"[PERF] Nexus [{mod.MetaModuleName}] DB stale + in recently-updated — verifying via API");
+                        Logger.Debug($"[PERF] Nexus [{mod.MetaModuleName}] DB stale + in recently-updated — verifying via API");
                         var latestFile = await nexusApi.GetLatestFileAsync(dbEntry.NexusModId);
                         if (latestFile != null && latestFile.NexusFileId != dbEntry.NexusFileId)
                         {
@@ -390,7 +392,7 @@ public static class UpdateChecker
                     if (nexusApi != null && knownModId.HasValue &&
                         recentlyUpdated.Count > 0 && recentlyUpdated.Contains(knownModId.Value))
                     {
-                        Logger.Info($"[PERF] Nexus [{mod.MetaModuleName}] API fallback — calling GetLatestFileAsync + GetModNameAsync");
+                        Logger.Debug($"[PERF] Nexus [{mod.MetaModuleName}] API fallback — calling GetLatestFileAsync + GetModNameAsync");
                         var latestFileTask = nexusApi.GetLatestFileAsync(knownModId.Value);
                         var modNameTask    = nexusApi.GetModNameAsync(knownModId.Value);
                         await Task.WhenAll(latestFileTask, modNameTask);
@@ -433,7 +435,8 @@ public static class UpdateChecker
             progress?.Report(checkedCount);
         }
 
-        Logger.Info($"UpdateChecker: {entries.Count} update(s) found out of {installedMods.Count} mods");
+        Logger.Info($"UpdateChecker: {entries.Count} update(s) found out of {installedMods.Count} mods" +
+                    (disambigCount > 0 ? $" · {disambigCount} need identification (details: set log level to Debug)" : ""));
 
         // Merge pending verified contributions (from prior downloads) with regular scan contributions.
         // Verified entries are cleared only after a confirmed successful send.

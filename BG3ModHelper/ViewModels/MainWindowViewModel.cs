@@ -502,7 +502,7 @@ public class MainWindowViewModel : ViewModelBase
             // Persist NexusModIds populated during this check
             var _saveIdsSw = System.Diagnostics.Stopwatch.StartNew();
             ModScanner.SaveNexusIds(_installedMods);
-            Logger.Info($"[PERF] SaveNexusIds: {_saveIdsSw.ElapsedMilliseconds}ms");
+            Logger.Debug($"[PERF] SaveNexusIds: {_saveIdsSw.ElapsedMilliseconds}ms");
             _installedModsCount = _installedMods.Count;
             OnPropertyChanged(nameof(InstalledModsCountDisplay));
 
@@ -564,7 +564,7 @@ public class MainWindowViewModel : ViewModelBase
                 reloadFunc,
                 _userLinks,
                 _nexusIdDb);
-            Logger.Info($"[PERF] UpdateNotificationViewModel ctor: {_sw.ElapsedMilliseconds}ms");
+            Logger.Debug($"[PERF] UpdateNotificationViewModel ctor: {_sw.ElapsedMilliseconds}ms");
             _sw.Restart();
 
             notificationVm.NexusMappingAdded += (uuid, modId, fileId) =>
@@ -577,13 +577,13 @@ public class MainWindowViewModel : ViewModelBase
             {
                 Owner = _ownerWindow
             };
-            Logger.Info($"[PERF] UpdateNotificationWindow ctor: {_sw.ElapsedMilliseconds}ms");
+            Logger.Debug($"[PERF] UpdateNotificationWindow ctor: {_sw.ElapsedMilliseconds}ms");
             _sw.Restart();
 
             _updateWindow = window;
             window.Closed += (_, _) => _updateWindow = null;
             window.Show();
-            Logger.Info($"[PERF] window.Show(): {_sw.ElapsedMilliseconds}ms");
+            Logger.Debug($"[PERF] window.Show(): {_sw.ElapsedMilliseconds}ms");
 
             // Fetch changelogs in background — window is already open.
             // Tooltips re-evaluate on each hover, so values will appear once they arrive.

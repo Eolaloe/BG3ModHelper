@@ -36,9 +36,9 @@ public partial class UpdateNotificationWindow : Window
         Loaded += (_, _) =>
         {
             SyncHeaderPadding();
-            Logger.Info("[PERF] UpdateNotificationWindow: Loaded");
+            Logger.Debug("[PERF] UpdateNotificationWindow: Loaded");
         };
-        ContentRendered += (_, _) => Logger.Info("[PERF] UpdateNotificationWindow: ContentRendered");
+        ContentRendered += (_, _) => Logger.Debug("[PERF] UpdateNotificationWindow: ContentRendered");
         SizeChanged += (_, _) => SyncHeaderPadding();
         SourceInitialized += (_, _) => PositionWindow();
         Closed += (_, _) =>
