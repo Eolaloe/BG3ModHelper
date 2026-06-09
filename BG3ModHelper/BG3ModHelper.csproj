@@ -9,7 +9,7 @@
 		<AssemblyName>BG3ModHelper</AssemblyName>
 		<RootNamespace>BG3ModHelper</RootNamespace>
 		<Product>BG3 Mod Helper</Product>
-		<Version>1.0.6</Version>
+		<Version>1.0.6.2</Version>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
 		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
@@ -36,6 +36,7 @@
 		<Resource Include="Assets\nexus.png"/>
 		<Resource Include="Assets\nexus_grey.png"/>
 		<Resource Include="Assets\modio.png"/>
+		<Resource Include="Assets\modio_grey.png"/>
 		<Resource Include="Assets\bg3mm.ico"/>
 		<Resource Include="Assets\bg3.png"/>
 		<Resource Include="Assets\Discord.png"/>

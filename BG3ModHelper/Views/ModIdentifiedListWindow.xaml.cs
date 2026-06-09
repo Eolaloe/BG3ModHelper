@@ -37,6 +37,8 @@ public partial class ModIdentifiedListWindow : Window
     {
         var dialog = new ModDisambiguationDialog(entry.PakFileName + ".pak", candidates) { Owner = this };
         dialog.Confirmed += chosen => entry.ApplyChange(chosen);
+        dialog.Unlinked  += entry.ApplyUnlink;
+        entry.RemoveFromListRequested += vm => _linkedOnly.Remove(vm);
         dialog.Show();
     }
 

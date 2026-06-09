@@ -164,7 +164,8 @@ public class InstalledModEntryViewModel : ViewModelBase
     private void OpenLinkDialogCore(int? existingNexusId, string? existingExternalUrl)
     {
         var dlgVm = new NexusLinkDialogViewModel(
-            ModName, PakFileNameNoExt, _linkStore, existingNexusId, existingExternalUrl);
+            ModName, _mod.PakFileName, _linkStore, existingNexusId, existingExternalUrl,
+            uuid: _mod.MetaUuid ?? "", pakFilePath: _mod.PakFilePath);
         var dlg = new Views.NexusLinkDialog(dlgVm);
         dlg.ShowDialog();
 

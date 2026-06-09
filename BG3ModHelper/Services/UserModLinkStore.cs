@@ -10,16 +10,22 @@ namespace BG3ModHelper.Services;
 /// or any external URL (Patreon, GitHub, etc. — reference/bookmark only).
 ///
 /// Storage: %LOCALAPPDATA%\BG3ModHelper\user_mod_links.json
-/// Format (v2):
+/// Format (v3):
 /// {
-///   "nexus":    { "pakFileNameNoExt": { "modId": 12345, "hash": "..." }, ... },
-///   "external": { "pakFileNameNoExt": "https://...", ... }
+///   "nexus": {
+///     "Mod.pak": {
+///       "uuid": "abc-123-...", "modId": 12345, "fileId": 67890,
+///       "fileName": "Main File", "hash": "..."
+///     }, ...
+///   },
+///   "external": { "Mod.pak": "https://...", ... }
 /// }
-/// Legacy v1 format (flat int dict) is auto-migrated on first load.
+///
+/// Key: pakFileName always WITH .pak extension, lowercase.
+/// Legacy entries (v1/v2, without .pak extension) are migrated on first load.
 ///
 /// Hash = file-size (16-char hex) + "-" + MD5(first 64 KB).
-/// Used to detect when a pak file has been replaced by a different mod's pak
-/// (e.g. user uninstalled mod 111 and installed mod 222 with the same pak filename).
+/// Used to detect when a pak file has been replaced by a different mod's pak.
 /// </summary>
 public class UserModLinkStore
 {
@@ -45,29 +51,44 @@ public class UserModLinkStore
         => GetNexusLink(pakFileName)?.ModId;
 
     /// <summary>
-    /// Saves a Nexus mod ID link, computing the pak file's quick-hash to detect future
-    /// file replacement. Pass pakFilePath = null to store without a hash (legacy compat).
+    /// Saves a complete Nexus match record for this pak.
+    ///   uuid:          the pak's MetaUuid — stable identity across pak renames
+    ///   fileId:        the specific Nexus file variant chosen (0 = not yet known)
+    ///   nexusFileName: the Nexus file slot / variant track name
+    ///   pakFilePath:   used to compute a quick-hash for file-replacement detection;
+    ///                  if null, preserves the existing hash (or stores empty for new entries)
     /// </summary>
-    public void SetNexusLink(string pakFileName, int nexusModId, string? pakFilePath = null)
+    public void SetNexusLink(
+        string  pakFileName,
+        int     nexusModId,
+        string  uuid          = "",
+        long    fileId        = 0,
+        string  nexusFileName = "",
+        string? pakFilePath   = null)
     {
-        var key  = NormalizeKey(pakFileName);
-        var hash = pakFilePath != null ? ComputeQuickHash(pakFilePath) : "";
-        _nexusLinks[key] = new NexusLinkEntry(nexusModId, hash);
+        var key = NormalizeKey(pakFileName);
+
+        // Preserve existing hash when no path supplied (e.g. link dialog without file access)
+        var hash = pakFilePath != null
+            ? ComputeQuickHash(pakFilePath)
+            : (_nexusLinks.TryGetValue(key, out var prev) ? prev.PakHash : "");
+
+        _nexusLinks[key] = new NexusLinkEntry(uuid, nexusModId, fileId, nexusFileName, hash);
         _externalLinks.Remove(key); // mutual exclusion
         Save();
     }
 
     /// <summary>
-    /// Recomputes and stores the quick-hash for an existing link after the pak file
-    /// has been updated (e.g. following a successful mod download). No-op if no link exists.
+    /// Recomputes and stores the quick-hash after the pak file has been updated
+    /// (e.g. following a successful download). No-op if no link exists.
     /// </summary>
     public void RefreshPakHash(string pakFileName, string pakFilePath)
     {
         var key = NormalizeKey(pakFileName);
         if (!_nexusLinks.TryGetValue(key, out var entry)) return;
         var newHash = ComputeQuickHash(pakFilePath);
-        if (newHash == entry.PakHash) return; // unchanged
-        _nexusLinks[key] = new NexusLinkEntry(entry.ModId, newHash);
+        if (newHash == entry.PakHash) return;
+        _nexusLinks[key] = new NexusLinkEntry(entry.Uuid, entry.ModId, entry.FileId, entry.NexusFileName, newHash);
         Save();
         Logger.Debug($"UserModLinkStore: refreshed hash for {pakFileName}");
     }
@@ -101,11 +122,42 @@ public class UserModLinkStore
     }
 
     /// <summary>
-    /// Returns all stored Nexus links as (normalizedPakName, entry) pairs.
-    /// Keys are without extension and lowercase (same form as the dictionary's internal keys).
+    /// Returns all stored Nexus links as (pakFileName, entry) pairs.
+    /// pakFileName always includes the .pak extension.
     /// </summary>
-    public IReadOnlyList<(string PakName, NexusLinkEntry Entry)> GetAllNexusLinks()
+    public IReadOnlyList<(string PakFileName, NexusLinkEntry Entry)> GetAllNexusLinks()
         => _nexusLinks.Select(kvp => (kvp.Key, kvp.Value)).ToList();
+
+    /// <summary>
+    /// Finds a Nexus link entry by the pak's MetaUuid.
+    /// Used for pak-rename recovery: when the pak filename changed but UUID is stable.
+    /// Returns (oldPakFileName, entry) if found, null otherwise.
+    /// </summary>
+    public (string PakFileName, NexusLinkEntry Entry)? FindByUuid(string uuid)
+    {
+        if (string.IsNullOrEmpty(uuid)) return null;
+        foreach (var kvp in _nexusLinks)
+            if (string.Equals(kvp.Value.Uuid, uuid, StringComparison.OrdinalIgnoreCase))
+                return (kvp.Key, kvp.Value);
+        return null;
+    }
+
+    /// <summary>
+    /// Migrates a Nexus link entry from an old pak filename key to a new one.
+    /// Called when a mod author renames the pak file in a new version.
+    /// No-op if the old key does not exist or both keys are the same.
+    /// </summary>
+    public void RekeyEntry(string oldPakFileName, string newPakFileName)
+    {
+        var oldKey = NormalizeKey(oldPakFileName);
+        var newKey = NormalizeKey(newPakFileName);
+        if (string.Equals(oldKey, newKey, StringComparison.OrdinalIgnoreCase)) return;
+        if (!_nexusLinks.TryGetValue(oldKey, out var entry)) return;
+        _nexusLinks.Remove(oldKey);
+        _nexusLinks[newKey] = entry;
+        Save();
+        Logger.Info($"UserModLinkStore: migrated key [{oldPakFileName}] → [{newPakFileName}] (pak renamed)");
+    }
 
     /// <summary>Returns true if any manual link (Nexus or external) exists for this pak.</summary>
     public bool HasAnyLink(string pakFileName)
@@ -114,12 +166,11 @@ public class UserModLinkStore
         return _nexusLinks.ContainsKey(key) || _externalLinks.ContainsKey(key);
     }
 
-    // ── Hash utility (public so UpdateChecker can call it without double-read) ──
+    // ── Hash utility ──────────────────────────────────────────────────────────
 
     /// <summary>
     /// Computes a quick identity hash for a pak file:
     ///   "{fileSize:x16}-{MD5(first 64 KB)}"
-    /// Fast enough to run on every update-check scan for a handful of disambiguated paks.
     /// Returns "" on any I/O error or if the file does not exist.
     /// </summary>
     public static string ComputeQuickHash(string filePath)
@@ -154,44 +205,72 @@ public class UserModLinkStore
         {
             var json = File.ReadAllText(FilePath);
             var root = JObject.Parse(json);
+            bool needsResave = false;
 
             if (root["nexus"] is JObject nexusObj)
             {
                 foreach (var (k, v) in nexusObj)
                 {
                     if (v == null) continue;
+
+                    // Normalize key: ensure .pak suffix (legacy entries lacked it)
+                    var key = NormalizeKey(k);
+                    if (!string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+                        needsResave = true;
+
                     if (v.Type == JTokenType.Integer)
                     {
-                        // v1 format: "pakName": 12345  → migrate, no hash
-                        _nexusLinks[k] = new NexusLinkEntry((int)v, "");
+                        // v1 legacy: "pakName": 12345 (no hash, no uuid, no fileId)
+                        _nexusLinks[key] = new NexusLinkEntry("", (int)v, 0, "", "");
+                        needsResave = true;
                     }
                     else if (v.Type == JTokenType.Object)
                     {
-                        // v2 format: "pakName": { "modId": 12345, "hash": "..." }
+                        // v2/v3 format: "pakName": { "modId": X, "hash": "..." }
+                        // New fields (uuid, fileId, nexusFileName) default to empty/0 if absent.
+                        // Migration: old "fileName" key → "nexusFileName"
                         var entry = v.ToObject<NexusLinkEntry>();
-                        if (entry != null) _nexusLinks[k] = entry;
+                        if (entry != null)
+                        {
+                            if (string.IsNullOrEmpty(entry.NexusFileName) &&
+                                v["fileName"]?.Value<string>() is { Length: > 0 } legacyName)
+                            {
+                                entry.NexusFileName = legacyName;
+                                needsResave = true;
+                            }
+                            _nexusLinks[key] = entry;
+                        }
                     }
-                }
-                // If we found any v1 entries, rewrite to v2
-                if (root["nexus"]?.Children<JProperty>()
-                        .Any(p => p.Value.Type == JTokenType.Integer) == true)
-                {
-                    Save();
-                    Logger.Info("UserModLinkStore: migrated v1 nexus entries to v2 (with hash field).");
                 }
             }
             else if (!root.ContainsKey("external"))
             {
                 // Oldest legacy: flat { "pakName": 12345 } at root
                 foreach (var (k, v) in root)
-                    if (v?.Type == JTokenType.Integer)
-                        _nexusLinks[k] = new NexusLinkEntry((int)v!, "");
-                Save();
-                Logger.Info("UserModLinkStore: migrated legacy flat format to v2.");
+                {
+                    if (v?.Type != JTokenType.Integer) continue;
+                    _nexusLinks[NormalizeKey(k)] = new NexusLinkEntry("", (int)v!, 0, "", "");
+                }
+                needsResave = true;
             }
 
             if (root["external"]?.ToObject<Dictionary<string, string>>() is { } ext)
-                _externalLinks = new Dictionary<string, string>(ext, StringComparer.OrdinalIgnoreCase);
+            {
+                foreach (var (k, url) in ext)
+                {
+                    var key = NormalizeKey(k);
+                    _externalLinks[key] = url;
+                    if (!string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+                        needsResave = true;
+                }
+            }
+
+            if (needsResave)
+            {
+                Save();
+                Logger.Info("UserModLinkStore: migrated legacy entries (normalized .pak keys / updated format).");
+            }
+            Logger.Info($"UserModLinkStore: loaded {_nexusLinks.Count} nexus, {_externalLinks.Count} external entries");
         }
         catch (Exception ex)
         {
@@ -213,22 +292,47 @@ public class UserModLinkStore
         }
     }
 
+    /// <summary>
+    /// Normalizes a pak file name to a consistent dictionary key:
+    /// trims whitespace, ensures .pak extension, lowercase.
+    /// Handles both "ModName" and "ModName.pak" inputs.
+    /// </summary>
     private static string NormalizeKey(string pakFileName)
     {
-        var name = pakFileName;
-        if (name.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
-            name = name[..^4];
+        var name = pakFileName.Trim();
+        if (!name.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
+            name += ".pak";
         return name.ToLowerInvariant();
     }
 }
 
-/// <summary>Stored Nexus link entry: mod ID + quick-hash of the pak file at link time.</summary>
+/// <summary>
+/// Complete match record linking a local pak file to its Nexus counterpart.
+/// Written when the user explicitly identifies a mod via the Identify or Change flow.
+/// </summary>
 public sealed class NexusLinkEntry
 {
-    [JsonProperty("modId")] public int    ModId   { get; set; }
-    [JsonProperty("hash")]  public string PakHash { get; set; } = "";
+    /// <summary>MetaUuid from the pak's meta.lsx — stable across version updates and pak renames.</summary>
+    [JsonProperty("uuid")]     public string Uuid          { get; set; } = "";
+
+    [JsonProperty("modId")]    public int    ModId         { get; set; }
+
+    /// <summary>Specific Nexus file variant chosen by the user (0 = not yet known).</summary>
+    [JsonProperty("fileId")]   public long   FileId        { get; set; }
+
+    /// <summary>Nexus file slot name — identifies the variant track (e.g. "SGT Foxey Lady", "Main File").</summary>
+    [JsonProperty("nexusFileName")] public string NexusFileName { get; set; } = "";
+
+    /// <summary>Quick-hash of the pak file at link time — detects if the pak was replaced by a different mod.</summary>
+    [JsonProperty("hash")]     public string PakHash       { get; set; } = "";
 
     public NexusLinkEntry() { }
-    public NexusLinkEntry(int modId, string pakHash) { ModId = modId; PakHash = pakHash; }
-
+    public NexusLinkEntry(string uuid, int modId, long fileId, string nexusFileName, string pakHash)
+    {
+        Uuid          = uuid;
+        ModId         = modId;
+        FileId        = fileId;
+        NexusFileName = nexusFileName;
+        PakHash       = pakHash;
+    }
 }

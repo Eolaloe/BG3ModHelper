@@ -343,7 +343,14 @@
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" VerticalAlignment="Center"/>
+                            <!-- Base parts: done · auto-download · manual · Nexus unlinked (grey) -->
+                            <TextBlock Text="{Binding SummaryBaseText}" FontSize="12" Foreground="#666666" VerticalAlignment="Center"/>
+                            <!-- sync-needed segment (amber), includes leading separator when needed -->
+                            <TextBlock Text="{Binding SyncSummaryText}" FontSize="12" Foreground="#b07800" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Visibility="{Binding SyncSummaryVisible}"/>
+                            <!-- identify segment (red), includes leading separator when needed -->
+                            <TextBlock Text="{Binding IdentifySummaryText}" FontSize="12" Foreground="#c03030" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Visibility="{Binding IdentifySummaryVisible}"/>
                             <TextBlock Text="  ·  " FontSize="12" Foreground="#cccccc" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding NexusRateLimitText}"
                                        Foreground="{Binding NexusRateLimitColor}"
@@ -372,21 +379,37 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,16,0">
+                        <!-- Nexus icon: grey=not logged in, colored=logged in. Click opens BG3 mods in side WebView. -->
                         <Button x:Name="NexusLoginBtn"
+                                Width="48" Height="48"
+                                Padding="0" Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                BorderThickness="0"
+                                Background="Transparent"
+                                Cursor="Hand"
+                                Click="NexusBrowse_Click"
+                                ToolTip="Browse BG3 mods on Nexus">
+                            <Image x:Name="NexusLoginIcon" Width="44" Height="44"
+                                   Source="pack://application:,,,/Assets/nexus_grey.png"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                        </Button>
+                        <!-- mod.io icon: grey = no API key, colored = API key configured. Click opens side WebView. -->
+                        <Button x:Name="ModioBrowseBtn"
                                 Width="48" Height="48"
                                 Padding="0" Margin="0,0,12,0"
                                 VerticalAlignment="Center"
                                 BorderThickness="0"
                                 Background="Transparent"
                                 Cursor="Hand"
-                                Click="NexusLogin_Click"
-                                ToolTip="Nexus Login">
-                            <Image x:Name="NexusLoginIcon" Width="44" Height="44"
-                                   Source="pack://application:,,,/Assets/nexus_grey.png"
+                                Click="ModioBrowse_Click"
+                                ToolTip="Browse BG3 mods on mod.io">
+                            <Image x:Name="ModioIcon" Width="44" Height="44"
+                                   Source="pack://application:,,,/Assets/modio_grey.png"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                         </Button>
                         <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="14"/>  <!-- check mark -->
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="6"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -398,8 +421,18 @@
                                 <RowDefinition Height="3"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
+                            <!-- Check marks: visible based on current account state -->
+                            <TextBlock x:Name="NexusPremiumCheck" Grid.Row="0" Grid.Column="0"
+                                       Text="✔" FontSize="10" Foreground="#22aa44"
+                                       VerticalAlignment="Center" Visibility="Collapsed"/>
+                            <TextBlock x:Name="NexusFreeCheck"    Grid.Row="2" Grid.Column="0"
+                                       Text="✔" FontSize="10" Foreground="#22aa44"
+                                       VerticalAlignment="Center" Visibility="Collapsed"/>
+                            <TextBlock x:Name="ModioCheck"        Grid.Row="4" Grid.Column="0"
+                                       Text="✔" FontSize="10" Foreground="#22aa44"
+                                       VerticalAlignment="Center" Visibility="Collapsed"/>
                             <!-- Nexus Premium + ↗ = clickable link -->
-                            <Button Grid.Row="0" Grid.Column="0"
+                            <Button Grid.Row="0" Grid.Column="1"
                                     Background="Transparent" BorderThickness="0" Padding="0"
                                     Cursor="Hand" VerticalAlignment="Center"
                                     HorizontalAlignment="Left" HorizontalContentAlignment="Left"
@@ -411,12 +444,12 @@
                                     <TextBlock Text=" ↗" FontSize="10" Foreground="#aaaaaa" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <TextBlock Grid.Row="0" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Text="— auto-download" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
                             <!-- Nexus Free: plain text, no link -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Nexus Free" FontSize="11" Foreground="#555555" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="2" Grid.Column="2" Text="— opens mod page" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Nexus Free" FontSize="11" Foreground="#555555" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="3" Text="— opens mod page" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
                             <!-- mod.io + ↗ = clickable link -->
-                            <Button Grid.Row="4" Grid.Column="0"
+                            <Button Grid.Row="4" Grid.Column="1"
                                     Background="Transparent" BorderThickness="0" Padding="0"
                                     Cursor="Hand" VerticalAlignment="Center"
                                     HorizontalAlignment="Left" HorizontalContentAlignment="Left"
@@ -428,7 +461,7 @@
                                     <TextBlock Text=" ↗" FontSize="10" Foreground="#aaaaaa" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
-                            <TextBlock Grid.Row="4" Grid.Column="2" Text="— auto-download" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="3" Text="— auto-download" FontSize="11" Foreground="#888888" VerticalAlignment="Center"/>
                         </Grid>
                     </StackPanel>
                 </Grid>

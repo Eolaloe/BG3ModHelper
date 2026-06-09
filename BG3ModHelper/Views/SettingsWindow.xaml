@@ -333,6 +333,25 @@
                                 <Run Text="Third-party licenses"/>
                             </Hyperlink>
                         </TextBlock>
+
+                        <!-- Log level + Clear Logs -->
+                        <Grid Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Log level:" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ComboBox x:Name="LogLevelCombo" Width="90" Padding="4,3"
+                                          VerticalContentAlignment="Center"/>
+                                <TextBlock x:Name="LogLevelHint"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"
+                                           FontSize="11" Foreground="#888888"/>
+                            </StackPanel>
+                            <Button x:Name="ClearLogsBtn"
+                                    Content="Clear Logs"
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource SettingsActionButton}"
+                                    Click="ClearLogs_Click"
+                                    ToolTip="Delete all log files in the logs folder"/>
+                        </Grid>
                     </StackPanel>
                 </GroupBox>
 

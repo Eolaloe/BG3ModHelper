@@ -71,6 +71,10 @@ public partial class App : Application
 
         var settings = SettingsStore.Load();
 
+        // Apply log level from settings before any logging begins.
+        if (Enum.TryParse<Services.LogLevel>(settings.LogMinLevel, ignoreCase: true, out var logLevel))
+            Services.Logger.MinLevel = logLevel;
+
         if (!string.IsNullOrEmpty(settings.BG3MMFolderPath))
             LibraryLoader.SetBg3mmFolder(settings.BG3MMFolderPath);
 

@@ -12,7 +12,10 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
 {
     private readonly UserModLinkStore _linkStore;
     private readonly NexusIdDatabase? _nexusDb;
+    private readonly string           _uuid;
+    private readonly string?          _pakFilePath;
 
+    /// <summary>Pak file name including .pak extension.</summary>
     public string PakFileName { get; }
 
     public int NexusModId { get; private set; }
@@ -47,7 +50,9 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
         string?          modName,
         string?          author,
         UserModLinkStore linkStore,
-        NexusIdDatabase? nexusDb)
+        NexusIdDatabase? nexusDb,
+        string           uuid        = "",
+        string?          pakFilePath = null)
     {
         PakFileName    = pakFileName;
         NexusModId     = nexusModId;
@@ -55,6 +60,8 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
         _displayAuthor = !string.IsNullOrEmpty(author)  ? author  : "";
         _linkStore     = linkStore;
         _nexusDb       = nexusDb;
+        _uuid          = uuid;
+        _pakFilePath   = pakFilePath;
 
         ChangeCommand = new RelayCommand(ExecuteChange);
     }
@@ -63,8 +70,8 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
     {
         if (_nexusDb == null) return;
 
-        // UserModLinkStore keys have no extension; NexusIdDatabase is indexed WITH .pak
-        var candidates = _nexusDb.LookupByPakFileName(PakFileName + ".pak")
+        // PakFileName already includes .pak — pass directly to DB lookup
+        var candidates = _nexusDb.LookupByPakFileName(PakFileName)
             .Select(e => new NexusModCandidate(
                 e.NexusModId,
                 e.NexusModName    ?? "",
@@ -78,13 +85,32 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
             ChangeRequested?.Invoke(this, candidates);
     }
 
+    /// <summary>Fired when the user clicks Unlink; the View removes this entry from the identified list.</summary>
+    public event Action<IdentifiedLinkEntryViewModel>? RemoveFromListRequested;
+
+    /// <summary>
+    /// Removes the stored Nexus link for this pak and asks the View to drop this entry from the list.
+    /// </summary>
+    public void ApplyUnlink()
+    {
+        _linkStore.RemoveLink(PakFileName);
+        RemoveFromListRequested?.Invoke(this);
+    }
+
     /// <summary>
     /// Called by the View after the user confirms a new Nexus entry.
     /// Overwrites the existing link in UserModLinkStore and updates the display.
     /// </summary>
     public void ApplyChange(NexusModCandidate chosen)
     {
-        _linkStore.SetNexusLink(PakFileName, chosen.ModId);
+        _linkStore.SetNexusLink(
+            PakFileName,
+            chosen.ModId,
+            uuid:          _uuid,
+            fileId:        chosen.FileId,
+            nexusFileName: chosen.FileName,
+            pakFilePath:   _pakFilePath);
+
         NexusModId    = chosen.ModId;
         DisplayName   = !string.IsNullOrEmpty(chosen.ModName) ? chosen.ModName : PakFileName;
         DisplayAuthor = !string.IsNullOrEmpty(chosen.Author)  ? chosen.Author  : "";

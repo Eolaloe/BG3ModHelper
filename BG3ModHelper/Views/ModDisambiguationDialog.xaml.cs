@@ -14,6 +14,9 @@ public partial class ModDisambiguationDialog : Window
     /// <summary>Raised when the user confirms a candidate selection.</summary>
     public event Action<NexusModCandidate>? Confirmed;
 
+    /// <summary>Raised when the user clicks Unlink — remove any stored Nexus link for this pak.</summary>
+    public event Action? Unlinked;
+
     /// <summary>Raised when the user clicks the Report (🚩) button for a candidate mod.</summary>
     public event Action<int>? ReportAbuseRequested;
 
@@ -161,4 +164,10 @@ public partial class ModDisambiguationDialog : Window
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Unlink_Click(object sender, RoutedEventArgs e)
+    {
+        Unlinked?.Invoke();
+        Close();
+    }
 }

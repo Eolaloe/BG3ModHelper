@@ -6,7 +6,9 @@ namespace BG3ModHelper.ViewModels;
 
 public class NexusLinkDialogViewModel : ViewModelBase
 {
-    private readonly string           _pakFileNameNoExt;
+    private readonly string           _pakFileName; // with .pak
+    private readonly string           _uuid;
+    private readonly string?          _pakFilePath;
     private readonly UserModLinkStore _linkStore;
 
     private string _urlInput  = "";
@@ -16,14 +18,18 @@ public class NexusLinkDialogViewModel : ViewModelBase
     /// <param name="existingExternalUrl">Pre-fill input when editing an existing external URL link.</param>
     public NexusLinkDialogViewModel(
         string           modName,
-        string           pakFileNameNoExt,
+        string           pakFileName,
         UserModLinkStore linkStore,
-        int?             existingNexusId      = null,
-        string?          existingExternalUrl  = null)
+        int?             existingNexusId     = null,
+        string?          existingExternalUrl = null,
+        string           uuid               = "",
+        string?          pakFilePath        = null)
     {
-        ModName           = modName;
-        _pakFileNameNoExt = pakFileNameNoExt;
-        _linkStore        = linkStore;
+        ModName      = modName;
+        _pakFileName = pakFileName;
+        _uuid        = uuid;
+        _pakFilePath = pakFilePath;
+        _linkStore   = linkStore;
         IsEditing         = existingNexusId.HasValue || !string.IsNullOrEmpty(existingExternalUrl);
 
         // Pre-fill with existing value when editing
@@ -93,7 +99,8 @@ public class NexusLinkDialogViewModel : ViewModelBase
         var nexusId = ParseModId(input);
         if (nexusId.HasValue)
         {
-            _linkStore.SetNexusLink(_pakFileNameNoExt, nexusId.Value);
+            // fileId/nexusFileName not known from URL alone — stored as 0/"" until user identifies
+            _linkStore.SetNexusLink(_pakFileName, nexusId.Value, uuid: _uuid, pakFilePath: _pakFilePath);
             CloseRequested?.Invoke(true);
             return;
         }
@@ -101,7 +108,7 @@ public class NexusLinkDialogViewModel : ViewModelBase
         // Case 2: External URL
         if (IsExternalUrl(input))
         {
-            _linkStore.SetExternalLink(_pakFileNameNoExt, input);
+            _linkStore.SetExternalLink(_pakFileName, input);
             CloseRequested?.Invoke(true);
             return;
         }
@@ -111,7 +118,7 @@ public class NexusLinkDialogViewModel : ViewModelBase
 
     private void RemoveLink()
     {
-        _linkStore.RemoveLink(_pakFileNameNoExt);
+        _linkStore.RemoveLink(_pakFileName);
         CloseRequested?.Invoke(true);
     }
 

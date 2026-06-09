@@ -39,6 +39,15 @@ public class AppSettings
     /// <summary>Whether the app was last closed in Compact mode.</summary>
     public bool LastModeIsCompact { get; set; } = false;
 
+    // === Logging ===
+
+    /// <summary>
+    /// Minimum log level written to the log file.
+    /// "Debug" = verbose (for troubleshooting), "Info" = normal (default).
+    /// Stored as a string for readability in settings.json.
+    /// </summary>
+    public string LogMinLevel { get; set; } = "Info";
+
     // === WebView ===
 
     /// <summary>Zoom factor for the slide WebView panel. 1.0 = 100%.</summary>

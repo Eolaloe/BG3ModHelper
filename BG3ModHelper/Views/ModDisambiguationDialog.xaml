@@ -160,16 +160,28 @@
             </StackPanel>
         </Border>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="CancelBtn"
-                    Content="Cancel"
-                    Width="80" Padding="0,5" Margin="0,0,8,0"
-                    Click="Cancel_Click"/>
-            <Button x:Name="ConfirmBtn"
-                    Content="Confirm"
+        <Grid>
+            <!-- Unlink: left side — remove any stored link for this pak -->
+            <Button x:Name="UnlinkBtn"
+                    Content="Unlink"
                     Width="80" Padding="0,5"
-                    Click="Confirm_Click"
-                    IsEnabled="False"/>
-        </StackPanel>
+                    HorizontalAlignment="Left"
+                    Foreground="#777777"
+                    Click="Unlink_Click"
+                    ToolTip="Remove the stored Nexus link for this pak file"/>
+
+            <!-- Cancel / Confirm: right side -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelBtn"
+                        Content="Cancel"
+                        Width="80" Padding="0,5" Margin="0,0,8,0"
+                        Click="Cancel_Click"/>
+                <Button x:Name="ConfirmBtn"
+                        Content="Confirm"
+                        Width="80" Padding="0,5"
+                        Click="Confirm_Click"
+                        IsEnabled="False"/>
+            </StackPanel>
+        </Grid>
     </StackPanel>
 </Window>

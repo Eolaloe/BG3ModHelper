@@ -29,6 +29,8 @@ public partial class UpdateNotificationWindow : Window
         vm.DisambiguationRequested     += OnDisambiguationRequested;
         vm.ShowIdentifiedListRequested += OnShowIdentifiedList;
         UpdateNexusLoginButton(WebViewHelper.IsLoggedIn());
+        UpdateModioIcon(!string.IsNullOrEmpty(settings.ModioAPIKey));
+        UpdatePlatformChecks(settings);
         WebViewHelper.LoginStateChanged += OnLoginStateChanged;
         Loaded += async (_, _) => await InitWebViewAsync();
         Loaded += (_, _) => SyncHeaderPadding();
@@ -291,11 +293,33 @@ public partial class UpdateNotificationWindow : Window
 
     private static readonly BitmapImage _nexusIconColour = new(new Uri("pack://application:,,,/Assets/nexus.png"));
     private static readonly BitmapImage _nexusIconGrey   = new(new Uri("pack://application:,,,/Assets/nexus_grey.png"));
+    private static readonly BitmapImage _modioIconColour = new(new Uri("pack://application:,,,/Assets/modio.png"));
+    private static readonly BitmapImage _modioIconGrey   = new(new Uri("pack://application:,,,/Assets/modio_grey.png"));
+
+    private void UpdatePlatformChecks(AppSettings s)
+    {
+        var hasNexusKey = !string.IsNullOrEmpty(s.NexusAPIKey);
+        var vis = Visibility.Visible;
+        var col = Visibility.Collapsed;
+        NexusPremiumCheck.Visibility = (hasNexusKey && s.NexusIsPremium)  ? vis : col;
+        NexusFreeCheck   .Visibility = (hasNexusKey && !s.NexusIsPremium) ? vis : col;
+        ModioCheck       .Visibility = !string.IsNullOrEmpty(s.ModioAPIKey) ? vis : col;
+    }
+
+    private void UpdateModioIcon(bool hasApiKey)
+    {
+        ModioIcon.Source    = hasApiKey ? _modioIconColour : _modioIconGrey;
+        ModioBrowseBtn.ToolTip = hasApiKey
+            ? "Browse BG3 mods on mod.io (API key configured)"
+            : "Browse BG3 mods on mod.io (no API key — configure in Settings)";
+    }
 
     private void UpdateNexusLoginButton(bool loggedIn)
     {
-        NexusLoginIcon.Source   = loggedIn ? _nexusIconColour : _nexusIconGrey;
-        NexusLoginBtn.ToolTip   = loggedIn ? "Nexus Logout" : "Nexus Login";
+        NexusLoginIcon.Source = loggedIn ? _nexusIconColour : _nexusIconGrey;
+        NexusLoginBtn.ToolTip = loggedIn
+            ? "Browse BG3 mods on Nexus (logged in)"
+            : "Browse BG3 mods on Nexus (not logged in — log in via Settings)";
     }
 
     private void OnLoginRequired()
@@ -310,17 +334,18 @@ public partial class UpdateNotificationWindow : Window
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    private async void NexusLogin_Click(object sender, RoutedEventArgs e)
+    private void NexusBrowse_Click(object sender, RoutedEventArgs e)
     {
-        if (WebViewHelper.IsLoggedIn())
-        {
-            await WebViewHelper.LogoutAsync();
-        }
-        else
-        {
-            var win = new NexusLoginWindow { Owner = this };
-            win.ShowDialog();
-        }
+        if (!_vm.IsWebViewPanelOpen)
+            _vm.RequestOpenWebViewPanel();
+        NavigateWebView("https://www.nexusmods.com/games/baldursgate3");
+    }
+
+    private void ModioBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_vm.IsWebViewPanelOpen)
+            _vm.RequestOpenWebViewPanel();
+        NavigateWebView("https://mod.io/g/baldursgate3");
     }
 
     private void OnShowIdentifiedList()
@@ -335,6 +360,8 @@ public partial class UpdateNotificationWindow : Window
         var dialog = new ModDisambiguationDialog(pakFileName, candidates) { Owner = this };
         dialog.ReportAbuseRequested += OnReportAbuseRequested;
         dialog.Confirmed            += entryVm.ApplyDisambiguation;
+        dialog.Unlinked             += entryVm.ApplyUnlink;
+        entryVm.RemoveFromListRequested += _vm.RemoveEntry;
         dialog.Show();   // non-modal: dialog stays on top of owner but doesn't block interaction
     }
 

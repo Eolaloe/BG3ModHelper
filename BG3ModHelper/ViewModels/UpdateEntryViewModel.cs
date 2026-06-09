@@ -466,10 +466,16 @@ public partial class UpdateEntryViewModel : ViewModelBase
     /// </summary>
     public void ApplyDisambiguation(NexusModCandidate chosen)
     {
-        // Persist the choice (with pak hash) so future checks resolve automatically
-        // and can detect if the pak file is later replaced by a different mod.
+        // Persist the full match record so future checks resolve automatically,
+        // stay on the correct variant track, and detect pak file replacement.
         if (_userLinkStore != null && !string.IsNullOrEmpty(_entry.PakFilePath))
-            _userLinkStore.SetNexusLink(System.IO.Path.GetFileName(_entry.PakFilePath), chosen.ModId, _entry.PakFilePath);
+            _userLinkStore.SetNexusLink(
+                System.IO.Path.GetFileName(_entry.PakFilePath),
+                chosen.ModId,
+                uuid:          _entry.MetaUuid ?? "",
+                fileId:        chosen.FileId,
+                nexusFileName: chosen.FileName,
+                pakFilePath:   _entry.PakFilePath);
 
         // Capture before we modify: empty = no pending update (identification-only).
         bool hadUpdate = !string.IsNullOrEmpty(_entry.UpdateNewVersion);
@@ -518,6 +524,26 @@ public partial class UpdateEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(NewVersion));
         OnPropertyChanged(nameof(VersionDisplay));
         OnPropertyChanged(nameof(NewVersionDisplay));
+    }
+
+    // === Unlink ===
+
+    /// <summary>
+    /// Fired when the user clicks Unlink in the disambiguation dialog.
+    /// The view removes this entry from the update list.
+    /// </summary>
+    public event Action<UpdateEntryViewModel>? RemoveFromListRequested;
+
+    /// <summary>
+    /// Removes any stored Nexus link for this pak from UserModLinkStore,
+    /// then asks the parent view to drop this entry from the update list.
+    /// </summary>
+    public void ApplyUnlink()
+    {
+        if (_userLinkStore != null && !string.IsNullOrEmpty(_entry.PakFilePath))
+            _userLinkStore.RemoveLink(System.IO.Path.GetFileName(_entry.PakFilePath));
+
+        RemoveFromListRequested?.Invoke(this);
     }
 
     // === Download ===
@@ -634,11 +660,26 @@ public partial class UpdateEntryViewModel : ViewModelBase
             Logger.Info($"Download complete: {ModName}");
             RecordHistory(success: true);
 
-            // Refresh stored pak hash so the updated file doesn't trigger re-disambiguation.
+            // Post-download: update the stored user link entry if one exists.
+            // Full update (fileId + nexusFileName + hash) when we have Nexus file info;
+            // otherwise fall back to hash-only refresh (no-op when no entry exists).
+            // This keeps the variant track current and prevents stale fileId re-disambiguation.
             if (_userLinkStore != null && !string.IsNullOrEmpty(_entry.PakFilePath) &&
                 System.IO.File.Exists(_entry.PakFilePath))
-                _userLinkStore.RefreshPakHash(
-                    System.IO.Path.GetFileName(_entry.PakFilePath), _entry.PakFilePath);
+            {
+                var pakName      = System.IO.Path.GetFileName(_entry.PakFilePath);
+                var existingLink = _userLinkStore.GetNexusLink(pakName);
+                if (existingLink != null)
+                    _userLinkStore.SetNexusLink(
+                        pakName,
+                        _entry.NexusModId ?? existingLink.ModId,
+                        uuid:          _entry.MetaUuid         ?? existingLink.Uuid,
+                        fileId:        nexusFileId  != 0       ? nexusFileId  : existingLink.FileId,
+                        nexusFileName: nexusFileName.Length > 0 ? nexusFileName : existingLink.NexusFileName,
+                        pakFilePath:   _entry.PakFilePath);
+                else
+                    _userLinkStore.RefreshPakHash(pakName, _entry.PakFilePath);
+            }
         }
         catch (PakInUseException ex)
         {

@@ -84,6 +84,21 @@ public static class UpdateChecker
             {
                 var dbEntries = nexusDb.LookupByPakFileName(mod.PakFileName);
 
+                // Pak-rename recovery: if user previously linked this mod under a different
+                // pak name (UUID is stable), migrate the UserModLinkStore entry to the new name.
+                // Must run before ALL fallback lookups so every subsequent GetNexusLink(mod.PakFileName)
+                // call in Cases 2/3 and the disambiguation block can find the migrated entry.
+                if (userLinkStore != null && !string.IsNullOrEmpty(mod.MetaUuid) &&
+                    userLinkStore.GetNexusLink(mod.PakFileName) == null)
+                {
+                    var found = userLinkStore.FindByUuid(mod.MetaUuid);
+                    if (found.HasValue)
+                    {
+                        Logger.Info($"UpdateChecker: [{mod.MetaModuleName}] pak renamed — migrating user link [{found.Value.PakFileName}] → [{mod.PakFileName}]");
+                        userLinkStore.RekeyEntry(found.Value.PakFileName, mod.PakFileName);
+                    }
+                }
+
                 // Case 2 fallback: pakFileName changed but same modId+fileName
                 if (dbEntries.Count == 0 && fileIdStore != null)
                 {
@@ -168,25 +183,23 @@ public static class UpdateChecker
                     }
                     else
                     {
-                        // No UUID match → try fileIdStore modId
+                        // No UUID match in DB entries.
+                        // Try stored fileId (most precise) → stored modId before asking the user.
                         var stored = fileIdStore?.GetEntry(mod.MetaUuid);
-                        dbEntry = stored?.NexusModId > 0
-                            ? dbEntries.FirstOrDefault(e => e.NexusModId == stored.NexusModId)
-                            : null;
+                        dbEntry = (stored?.NexusFileId > 0
+                                    ? dbEntries.FirstOrDefault(e => e.NexusFileId == stored.NexusFileId)
+                                    : null)
+                               ?? (stored?.NexusModId > 0
+                                    ? dbEntries.FirstOrDefault(e => e.NexusModId == stored.NexusModId)
+                                    : null);
 
                         if (dbEntry == null)
                         {
-                            var distinctModIds = dbEntries.Select(e => e.NexusModId).Distinct().ToList();
-                            if (distinctModIds.Count > 1)
-                            {
-                                // Multiple different mods share this pak filename → user must identify.
-                                needsDisambiguation = true;
-                            }
-                            else
-                            {
-                                // Same mod, different file variants → pick latest fileId.
-                                dbEntry = dbEntries.OrderByDescending(e => e.NexusFileId).FirstOrDefault();
-                            }
+                            // No stored preference found — user must identify.
+                            // This covers both: multiple different mods sharing the same pak filename,
+                            // AND a single mod with multiple file variants (e.g. legacy vs current slot).
+                            // Auto-picking the highest fileId risks downloading the wrong variant.
+                            needsDisambiguation = true;
                         }
                     }
                 }
@@ -213,19 +226,21 @@ public static class UpdateChecker
                 }
 
                 // Upgrade to latest fileId for the resolved modId.
-                // When the user has a stored fileId (from a previous download), stay on that
-                // variant's track — only upgrade within the same NexusFileName group.
+                // Priority for variant track: UserModLinkStore.fileId (explicit user choice)
+                // > ModFileIdStore.fileId (last downloaded).
                 // Fall back to highest fileId only when the stored fileId is no longer in the DB
-                // (archived/removed) or when no prior download record exists.
+                // (archived/removed) or when no prior record exists.
                 if (dbEntry != null && dbEntries.Count > 1)
                 {
                     var sameMod = dbEntries.Where(e => e.NexusModId == dbEntry.NexusModId).ToList();
 
-                    var storedFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                    var userFileId   = userLinkStore?.GetNexusLink(mod.PakFileName)?.FileId;
+                    var storedFileId = (userFileId > 0 ? userFileId : null)
+                                     ?? fileIdStore?.GetFileId(mod.MetaUuid);
+
                     if (storedFileId > 0)
                     {
-                        // User has previously downloaded a specific fileId.
-                        // Find the DB entry that matches — if still present, it's the user's variant track.
+                        // User has a stored fileId preference — find the matching DB entry.
                         var storedEntry = sameMod.FirstOrDefault(e => e.NexusFileId == storedFileId);
                         if (storedEntry != null)
                         {
@@ -241,7 +256,7 @@ public static class UpdateChecker
                     }
                     else
                     {
-                        // No prior download record → pick latest fileId.
+                        // No prior preference → pick latest fileId.
                         var latest = sameMod.OrderByDescending(e => e.NexusFileId).FirstOrDefault();
                         if (latest != null) dbEntry = latest;
                     }
@@ -257,7 +272,8 @@ public static class UpdateChecker
                     if (!mod.NexusModId.HasValue)
                         mod.NexusModId = dbEntry.NexusModId;
 
-                    bool hasUpdate = HasNexusUpdate(mod, dbEntry, fileIdStore);
+                    var userLink = userLinkStore?.GetNexusLink(mod.PakFileName);
+                    bool hasUpdate = HasNexusUpdate(mod, dbEntry, fileIdStore, userLink);
 
                     // Stale DB fallback: DB says "no update" but DB hasn't been maintained
                     // for 7+ days AND this mod appears in the recently-updated list.
@@ -271,7 +287,8 @@ public static class UpdateChecker
                         var latestFile = await nexusApi.GetLatestFileAsync(dbEntry.NexusModId);
                         if (latestFile != null && latestFile.NexusFileId != dbEntry.NexusFileId)
                         {
-                            var localFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                            var localFileId = (userLink?.FileId > 0 ? userLink.FileId : (long?)null)
+                                           ?? fileIdStore?.GetFileId(mod.MetaUuid);
                             hasUpdate = localFileId.HasValue
                                 ? localFileId.Value != latestFile.NexusFileId
                                 : IsNewer(latestFile.NexusFileVersion, mod.MetaVersion);
@@ -380,7 +397,9 @@ public static class UpdateChecker
                         var latestFile = latestFileTask.Result;
                         if (latestFile != null)
                         {
-                            var localFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                            var apiFallbackLink = userLinkStore?.GetNexusLink(mod.PakFileName);
+                            var localFileId = (apiFallbackLink?.FileId > 0 ? apiFallbackLink.FileId : (long?)null)
+                                           ?? fileIdStore?.GetFileId(mod.MetaUuid);
                             bool hasUpdate = localFileId.HasValue
                                 ? localFileId.Value != latestFile.NexusFileId
                                 : IsNewer(latestFile.NexusFileVersion, mod.MetaVersion);
@@ -469,9 +488,14 @@ public static class UpdateChecker
     /// Fallback: version string comparison.
     /// </summary>
     private static bool HasNexusUpdate(
-        InstalledMod mod, PakLookupEntry dbEntry, ModFileIdStore? store)
+        InstalledMod    mod,
+        PakLookupEntry  dbEntry,
+        ModFileIdStore? store,
+        NexusLinkEntry? userLink = null)
     {
-        var localFileId = store?.GetFileId(mod.MetaUuid);
+        // Priority: UserModLinkStore.fileId (explicit user choice) > ModFileIdStore.fileId (download history)
+        var localFileId = (userLink?.FileId > 0 ? userLink.FileId : (long?)null)
+                        ?? store?.GetFileId(mod.MetaUuid);
         if (localFileId.HasValue)
         {
             var result = localFileId.Value != dbEntry.NexusFileId;

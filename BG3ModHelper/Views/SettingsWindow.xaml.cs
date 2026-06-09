@@ -93,6 +93,15 @@ public partial class SettingsWindow : Window
         var ver = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(4) ?? "0.0.0";
         VersionRun.Text = $"{ver}  ({Constants.RELEASE_NAME})";
 
+        // Log level combo — populate from enum, select current setting
+        var logLevels = new[] { "Debug", "Info", "Warn", "Error" };
+        LogLevelCombo.ItemsSource   = logLevels;
+        LogLevelCombo.SelectedItem  = logLevels.FirstOrDefault(
+            l => string.Equals(l, _settings.LogMinLevel, StringComparison.OrdinalIgnoreCase))
+            ?? "Info";
+        LogLevelCombo.SelectionChanged += LogLevelCombo_SelectionChanged;
+        UpdateLogLevelHint();
+
         // nxm handler state — suppress event during initial bind
         _suppressNxmEvent = true;
         NxmEnabledCheckBox.IsChecked = _settings.NxmHandlerEnabled;
@@ -242,11 +251,65 @@ public partial class SettingsWindow : Window
         _settings.FolderWatchEnabled      = FolderWatchCheckBox.IsChecked ?? false;
         _settings.DeleteSourceAfterInstall = DeleteSourceCheckBox.IsChecked ?? false;
         _settings.WatchedDownloadFolder   = WatchFolderBox.Text.Trim();
+        _settings.LogMinLevel = LogLevelCombo.SelectedItem as string ?? "Info";
+
+        // Apply immediately so the new level takes effect without restart.
+        if (Enum.TryParse<LogLevel>(_settings.LogMinLevel, out var logLevel))
+            Logger.MinLevel = logLevel;
+
         SettingsStore.Save(_settings);
         Logger.Info("Settings saved");
 
         DialogResult = true;
         Close();
+    }
+
+    private void LogLevelCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        => UpdateLogLevelHint();
+
+    private void ClearLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var logFolder = System.IO.Path.Combine(Services.SettingsStore.GetDataFolder(), "logs");
+        var files = System.IO.Directory.Exists(logFolder)
+            ? System.IO.Directory.GetFiles(logFolder, "*.log")
+            : [];
+
+        if (files.Length == 0)
+        {
+            MessageBox.Show("No log files found.", "Clear Logs", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Delete {files.Length} log file(s) in\n{logFolder}?",
+            "Clear Logs",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        int deleted = 0;
+        foreach (var f in files)
+        {
+            try { System.IO.File.Delete(f); deleted++; }
+            catch { /* skip locked files */ }
+        }
+
+        // Today's log will be recreated on the next write — nothing else needed.
+        Logger.Info($"Logs cleared: {deleted} file(s) deleted");
+        MessageBox.Show($"Deleted {deleted} log file(s).", "Clear Logs", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void UpdateLogLevelHint()
+    {
+        LogLevelHint.Text = (LogLevelCombo.SelectedItem as string) switch
+        {
+            "Debug" => "Verbose — logs every lookup and match decision",
+            "Info"  => "Normal — recommended for everyday use",
+            "Warn"  => "Minimal — warnings and errors only",
+            "Error" => "Errors only",
+            _       => ""
+        };
     }
 
     private void ToggleNexusKey_Click(object sender, RoutedEventArgs e)

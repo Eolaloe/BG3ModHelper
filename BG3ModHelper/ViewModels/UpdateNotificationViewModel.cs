@@ -161,16 +161,16 @@ public class UpdateNotificationViewModel : ViewModelBase
         {
             if (_userLinkStore == null) return Array.Empty<IdentifiedLinkEntryViewModel>();
 
-            // Pak base names (no extension, lowercase) already in the update list
+            // Pak file names (with .pak, lowercase) already in the update list
             var inUpdateList = Entries
                 .Where(e => !string.IsNullOrEmpty(e.PakFilePath))
-                .Select(e => System.IO.Path.GetFileNameWithoutExtension(e.PakFilePath)
-                                            .ToLowerInvariant())
+                .Select(e => System.IO.Path.GetFileName(e.PakFilePath).ToLowerInvariant())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var result = new List<IdentifiedLinkEntryViewModel>();
             foreach (var (pakName, link) in _userLinkStore.GetAllNexusLinks())
             {
+                // pakName is already normalized with .pak (from UserModLinkStore keys)
                 if (inUpdateList.Contains(pakName)) continue;
 
                 string? modName = null, author = null;
@@ -182,7 +182,9 @@ public class UpdateNotificationViewModel : ViewModelBase
                     if (match != null) { modName = match.NexusModName; author = match.NexusUploadedBy; }
                 }
 
-                result.Add(new IdentifiedLinkEntryViewModel(pakName, link.ModId, modName, author, _userLinkStore, _nexusDb));
+                result.Add(new IdentifiedLinkEntryViewModel(
+                    pakName, link.ModId, modName, author, _userLinkStore, _nexusDb,
+                    uuid: link.Uuid));
             }
             return result;
         }
@@ -341,6 +343,38 @@ public class UpdateNotificationViewModel : ViewModelBase
         get => _summaryText;
         private set => SetField(ref _summaryText, value);
     }
+
+    // Coloured summary segments
+    private string _summaryBaseText = "";
+    public string SummaryBaseText
+    {
+        get => _summaryBaseText;
+        private set => SetField(ref _summaryBaseText, value);
+    }
+
+    private string _syncSummaryText = "";
+    public string SyncSummaryText
+    {
+        get => _syncSummaryText;
+        private set
+        {
+            if (SetField(ref _syncSummaryText, value))
+                OnPropertyChanged(nameof(SyncSummaryVisible));
+        }
+    }
+    public Visibility SyncSummaryVisible => _syncSummaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    private string _identifySummaryText = "";
+    public string IdentifySummaryText
+    {
+        get => _identifySummaryText;
+        private set
+        {
+            if (SetField(ref _identifySummaryText, value))
+                OnPropertyChanged(nameof(IdentifySummaryVisible));
+        }
+    }
+    public Visibility IdentifySummaryVisible => _identifySummaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     private bool _isBusy;
     public bool IsBusy
@@ -631,6 +665,22 @@ public class UpdateNotificationViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(SyncSectionHeader));
         OnPropertyChanged(nameof(HasSyncEntries));
+        UpdateSummary();
+        RefreshCommand.RaiseCanExecuteChanged();
+    }
+
+    // === Entry removal ===
+
+    /// <summary>
+    /// Removes an entry from all observable collections (called after user clicks Unlink).
+    /// </summary>
+    public void RemoveEntry(UpdateEntryViewModel vm)
+    {
+        vm.PropertyChanged -= OnEntrySelectionChanged;
+        Entries.Remove(vm);
+        ActiveEntries.Remove(vm);
+        InactiveEntries.Remove(vm);
+        SyncEntries.Remove(vm);
         UpdateSummary();
         RefreshCommand.RaiseCanExecuteChanged();
     }
@@ -1066,13 +1116,26 @@ public class UpdateNotificationViewModel : ViewModelBase
             ? $"{updateTotal} Updates Available"
             : syncCount > 0 ? "Sync Recommended" : "All Up To Date";
 
-        var parts = new List<string>();
-        if (doneCount     > 0) parts.Add($"{doneCount} done");
-        if (autoCount     > 0) parts.Add($"{autoCount} auto-download");
-        if (manualCount   > 0) parts.Add($"{manualCount} manual");
-        if (unregCount    > 0) parts.Add($"{unregCount} Nexus unlinked");
-        if (syncCount     > 0) parts.Add($"{syncCount} sync-needed");
-        if (identifyCount > 0) parts.Add($"{identifyCount} identify");
-        SummaryText = string.Join(" · ", parts);
+        var baseParts = new List<string>();
+        if (doneCount   > 0) baseParts.Add($"{doneCount} done");
+        if (autoCount   > 0) baseParts.Add($"{autoCount} auto-download");
+        if (manualCount > 0) baseParts.Add($"{manualCount} manual");
+        if (unregCount  > 0) baseParts.Add($"{unregCount} Nexus unlinked");
+
+        SummaryBaseText = string.Join(" · ", baseParts);
+
+        SyncSummaryText = syncCount > 0
+            ? (baseParts.Count > 0 ? " · " : "") + $"{syncCount} sync-needed"
+            : "";
+
+        IdentifySummaryText = identifyCount > 0
+            ? (baseParts.Count > 0 || syncCount > 0 ? " · " : "") + $"{identifyCount} identify"
+            : "";
+
+        // Keep the legacy combined string in case anything else reads it
+        var all = new List<string>(baseParts);
+        if (syncCount     > 0) all.Add($"{syncCount} sync-needed");
+        if (identifyCount > 0) all.Add($"{identifyCount} identify");
+        SummaryText = string.Join(" · ", all);
     }
 }
