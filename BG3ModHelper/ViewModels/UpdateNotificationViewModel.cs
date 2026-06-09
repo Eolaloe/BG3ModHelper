@@ -940,10 +940,10 @@ public class UpdateNotificationViewModel : ViewModelBase
         if (pendingItems.Count == 0) return;
 
         // 3. Ask what to do with the remaining queue
-        //    Yes = 전체 취소 / No = 다음 항목 계속
+        //    Yes = cancel all / No = continue with next item
         var result = MessageBox.Show(
-            $"현재 다운로드가 취소되었습니다.\n\n대기 중인 {pendingItems.Count}개 항목도 전체 취소할까요?\n\n예(Yes) — 전체 취소\n아니오(No) — 다음 항목 계속",
-            "다운로드 취소",
+            $"The current download was cancelled.\n\nCancel the remaining {pendingItems.Count} queued item(s) as well?\n\nYes — cancel all\nNo — continue with next item",
+            "Download Cancelled",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No);

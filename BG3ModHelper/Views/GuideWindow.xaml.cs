@@ -271,7 +271,7 @@ public partial class GuideWindow : Window
             ToolTipService.SetShowDuration(link, 30000);
             ToolTipService.SetInitialShowDelay(link, 200);
         }
-        catch { /* 리소스 없으면 툴팁 없이 표시 */ }
+        catch { /* resource not found — show link without tooltip */ }
 
         tb.Inlines.Add(link);
         Add(tb);
