@@ -69,9 +69,11 @@ public partial class UpdateEntryViewModel : ViewModelBase
     }
 
     // === Identity ===
-    public string UUID           => _entry.MetaUuid;
-    public int?   NexusModId     => _entry.NexusModId;
-    public string ModName        => _entry.UpdateModName;
+    public string UUID            => _entry.MetaUuid;
+    public int?   NexusModId      => _entry.NexusModId;
+    public string ModName         => _entry.UpdateModName;
+    public string NexusModName    => _entry.NexusModName  ?? "";
+    public string NexusFileName   => _entry.NexusFileName ?? "";
 
     // Two-line name display: platform name (top) + MetaModuleName (bottom)
     public string PlatformModName =>
@@ -530,21 +532,45 @@ public partial class UpdateEntryViewModel : ViewModelBase
     // === Unlink ===
 
     /// <summary>
-    /// Fired when the user clicks Unlink in the disambiguation dialog.
-    /// The view removes this entry from the update list.
-    /// </summary>
-    public event Action<UpdateEntryViewModel>? RemoveFromListRequested;
-
-    /// <summary>
     /// Removes any stored Nexus link for this pak from UserModLinkStore,
-    /// then asks the parent view to drop this entry from the update list.
+    /// then resets the entry back to the "needs identification" state (IsAmbiguous = true).
+    /// Reverses exactly what ApplyDisambiguation set — the entry stays in the list
+    /// showing the Identify button so the user can pick a candidate again later.
     /// </summary>
     public void ApplyUnlink()
     {
         if (_userLinkStore != null && !string.IsNullOrEmpty(_entry.PakFilePath))
             _userLinkStore.RemoveLink(System.IO.Path.GetFileName(_entry.PakFilePath));
 
-        RemoveFromListRequested?.Invoke(this);
+        // Reverse ApplyDisambiguation — reset to pre-identification state
+        _entry.IsAmbiguous         = true;
+        _entry.NexusModId          = null;
+        _entry.NexusFileId         = 0;
+        _entry.NexusFileName       = "";
+        _entry.NexusFileVersion    = "";
+        _entry.NexusModName        = "";
+        _entry.NexusModPageUrl     = "";
+        _entry.UpdateNewVersion    = "";
+        _entry.CanAutoDownload     = false;
+
+        OnPropertyChanged(nameof(IsAmbiguous));
+        OnPropertyChanged(nameof(RowBackground));
+        OnPropertyChanged(nameof(CanAutoDownload));
+        OnPropertyChanged(nameof(ActionLabel));
+        OnPropertyChanged(nameof(ActionStyle));
+        OnPropertyChanged(nameof(CanBeQueued));
+        OnPropertyChanged(nameof(Changelog));
+        OnPropertyChanged(nameof(ShowChangeButton));
+        OnPropertyChanged(nameof(PlatformModName));
+        OnPropertyChanged(nameof(HasPlatformName));
+        OnPropertyChanged(nameof(SortName));
+        OnPropertyChanged(nameof(NexusModId));
+        OnPropertyChanged(nameof(ActivePageUrl));
+        OnPropertyChanged(nameof(NewVersion));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(StatusColor));
+        PrimaryActionCommand.RaiseCanExecuteChanged();
+        ChangeIdentificationCommand.RaiseCanExecuteChanged();
     }
 
     // === Download ===

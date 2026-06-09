@@ -18,7 +18,8 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
     /// <summary>Pak file name including .pak extension.</summary>
     public string PakFileName { get; }
 
-    public int NexusModId { get; private set; }
+    public int    NexusModId    { get; private set; }
+    public string NexusFileName { get; private set; }
 
     private string _displayName;
     public string DisplayName
@@ -51,11 +52,13 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
         string?          author,
         UserModLinkStore linkStore,
         NexusIdDatabase? nexusDb,
-        string           uuid        = "",
-        string?          pakFilePath = null)
+        string           uuid           = "",
+        string?          pakFilePath    = null,
+        string?          nexusFileName  = null)
     {
         PakFileName    = pakFileName;
         NexusModId     = nexusModId;
+        NexusFileName  = nexusFileName ?? "";
         _displayName   = !string.IsNullOrEmpty(modName) ? modName : pakFileName;
         _displayAuthor = !string.IsNullOrEmpty(author)  ? author  : "";
         _linkStore     = linkStore;
@@ -112,9 +115,11 @@ public class IdentifiedLinkEntryViewModel : ViewModelBase
             pakFilePath:   _pakFilePath);
 
         NexusModId    = chosen.ModId;
+        NexusFileName = chosen.FileName ?? "";
         DisplayName   = !string.IsNullOrEmpty(chosen.ModName) ? chosen.ModName : PakFileName;
         DisplayAuthor = !string.IsNullOrEmpty(chosen.Author)  ? chosen.Author  : "";
         OnPropertyChanged(nameof(NexusModId));
+        OnPropertyChanged(nameof(NexusFileName));
         OnPropertyChanged(nameof(NexusPageUrl));
     }
 }

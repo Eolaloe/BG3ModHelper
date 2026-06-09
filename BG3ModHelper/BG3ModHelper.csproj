@@ -9,7 +9,7 @@
 		<AssemblyName>BG3ModHelper</AssemblyName>
 		<RootNamespace>BG3ModHelper</RootNamespace>
 		<Product>BG3 Mod Helper</Product>
-		<Version>1.0.6.3</Version>
+		<Version>1.0.6.4</Version>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
 		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
@@ -23,6 +23,29 @@
 		<!-- Accept .NET 9+ runtime if .NET 8 is missing -->
 		<RollForward>LatestMajor</RollForward>
 	</PropertyGroup>
+
+	<!--
+	  WebView2Loader.dll is already embedded as EmbeddedResource and extracted to
+	  %LocalAppData%\BG3ModHelper\Lib\ at startup by LibraryLoader.
+	  Suppress the redundant copy that the WebView2 NuGet package places in publish output.
+	-->
+	<Target Name="RemoveWebView2LoaderFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+		<ItemGroup>
+			<!-- WebView2Loader.dll: already embedded as EmbeddedResource and extracted
+			     to %LocalAppData%\BG3ModHelper\Lib\ at runtime — suppress NuGet's copy -->
+			<_WebView2LoaderItems Include="@(ResolvedFileToPublish)"
+				Condition="'%(Filename)%(Extension)' == 'WebView2Loader.dll'" />
+			<ResolvedFileToPublish Remove="@(_WebView2LoaderItems)" />
+
+			<!-- WebView2 IntelliSense XML docs — dev-time only, not needed at runtime -->
+			<_WebView2XmlItems Include="@(ResolvedFileToPublish)"
+				Condition="'%(Extension)' == '.xml'
+				       and ('%(Filename)' == 'Microsoft.Web.WebView2.Core'
+				         or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'
+				         or '%(Filename)' == 'Microsoft.Web.WebView2.Wpf')" />
+			<ResolvedFileToPublish Remove="@(_WebView2XmlItems)" />
+		</ItemGroup>
+	</Target>
 
 	<ItemGroup>
 		<Resource Include="Assets\api_nexus.png"/>

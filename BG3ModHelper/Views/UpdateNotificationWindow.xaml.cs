@@ -384,7 +384,7 @@ public partial class UpdateNotificationWindow : Window
         dialog.ReportAbuseRequested += OnReportAbuseRequested;
         dialog.Confirmed            += entryVm.ApplyDisambiguation;
         dialog.Unlinked             += entryVm.ApplyUnlink;
-        entryVm.RemoveFromListRequested += _vm.RemoveEntry;
+        // Unlink only clears the persisted link record — no list manipulation needed.
         dialog.Show();   // non-modal: dialog stays on top of owner but doesn't block interaction
     }
 

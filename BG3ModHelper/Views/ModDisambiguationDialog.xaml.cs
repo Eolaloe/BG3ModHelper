@@ -31,7 +31,14 @@ public partial class ModDisambiguationDialog : Window
         var gray  = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#666666"));
         var lgray = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#999999"));
 
-        foreach (var c in candidates)
+        // 1차: ModId 오름차순 (낮을수록 먼저 등록된 원본 가능성 높음)
+        // 2차: FileId 내림차순 (높을수록 최신 파일)
+        var sorted = candidates
+            .OrderBy(c => c.ModId)
+            .ThenByDescending(c => c.FileId)
+            .ToList();
+
+        foreach (var c in sorted)
         {
             var candidate = c;
             var radio = new RadioButton { Style = FindResource("CandidateItem") as Style };

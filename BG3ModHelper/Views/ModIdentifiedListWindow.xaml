@@ -23,9 +23,7 @@
                         <ColumnDefinition Width="30"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="80"/>   <!-- author -->
-                        <ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="20"/>
-                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="160"/>  <!-- nexus mod / file -->
                         <ColumnDefinition Width="100"/>  <!-- source -->
                         <ColumnDefinition Width="100"/>  <!-- status/change -->
                     </Grid.ColumnDefinitions>
@@ -67,21 +65,20 @@
                                VerticalAlignment="Center" FontSize="11" Foreground="#666666"
                                TextTrimming="CharacterEllipsis" Margin="0,0,4,0"/>
 
-                    <TextBlock Grid.Column="3"
-                               Text="{Binding CurrentVersion}"
-                               VerticalAlignment="Center" HorizontalAlignment="Right"
-                               FontFamily="Consolas" FontSize="11" Foreground="#444444" Margin="0,0,2,0"/>
-                    <TextBlock Grid.Column="4"
-                               Text="→"
-                               VerticalAlignment="Center" HorizontalAlignment="Center"
-                               FontSize="11" Foreground="#888888"/>
-                    <TextBlock Grid.Column="5"
-                               Text="{Binding NewVersionDisplay}"
-                               VerticalAlignment="Center" HorizontalAlignment="Left"
-                               FontFamily="Consolas" FontSize="11" Foreground="#444444" Margin="2,0,0,0"/>
+                    <!-- Nexus Mod name (top) + Nexus File name (bottom) -->
+                    <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,4,0">
+                        <TextBlock Text="{Binding NexusModName}"
+                                   FontSize="13" FontWeight="SemiBold" Foreground="#222222"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding NexusModName}"/>
+                        <TextBlock Text="{Binding NexusFileName}"
+                                   FontSize="11" Foreground="#aaaaaa"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding NexusFileName}"/>
+                    </StackPanel>
 
                     <!-- Source badge -->
-                    <Grid Grid.Column="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Border Style="{StaticResource SourceBadgeBorder}"
                                 Background="{Binding SourceBadgeColor}"
                                 Visibility="{Binding HasMultipleSources, Converter={StaticResource InverseBoolToVisibilityConverter}}">
@@ -145,7 +142,7 @@
                     </Grid>
 
                     <!-- Status / Change button -->
-                    <Grid Grid.Column="7" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Grid Grid.Column="5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <StackPanel HorizontalAlignment="Center"
                                     Visibility="{Binding ShowChangeButton, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                             <TextBlock Text="{Binding StatusText}"
@@ -192,19 +189,16 @@
                     <ColumnDefinition Width="30"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="80"/>
-                    <ColumnDefinition Width="80"/>
-                    <ColumnDefinition Width="20"/>
-                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="160"/>
                     <ColumnDefinition Width="100"/>
                     <ColumnDefinition Width="100"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="✓"      Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Name"   Style="{StaticResource ColHeader}"/>
-                <TextBlock Grid.Column="2" Text="Author" Style="{StaticResource ColHeader}"/>
-                <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Text="Version"
-                           Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="6" Text="Source" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                <TextBlock Grid.Column="7" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="0" Text="✓"           Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Name"        Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="2" Text="Author"      Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="3" Text="Nexus Mod / File" Style="{StaticResource ColHeader}"/>
+                <TextBlock Grid.Column="4" Text="Source"      Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="5" Text="Status"      Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
             </Grid>
         </Border>
 
@@ -237,9 +231,7 @@
                                         <ColumnDefinition Width="30"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="80"/>
-                                        <ColumnDefinition Width="80"/>
-                                        <ColumnDefinition Width="20"/>
-                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="160"/>  <!-- nexus mod / file -->
                                         <ColumnDefinition Width="100"/>
                                         <ColumnDefinition Width="100"/>
                                     </Grid.ColumnDefinitions>
@@ -262,12 +254,20 @@
                                                VerticalAlignment="Center" FontSize="11" Foreground="#666666"
                                                TextTrimming="CharacterEllipsis" Margin="0,0,4,0"/>
 
-                                    <!-- Version columns: empty for linked-only entries -->
-                                    <TextBlock Grid.Column="3" Text="—" Foreground="#cccccc"
-                                               VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="11"/>
+                                    <!-- Nexus Mod name (top) + Nexus File name (bottom) -->
+                                    <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,4,0">
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontSize="13" FontWeight="SemiBold" Foreground="#222222"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding DisplayName}"/>
+                                        <TextBlock Text="{Binding NexusFileName}"
+                                                   FontSize="11" Foreground="#aaaaaa"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding NexusFileName}"/>
+                                    </StackPanel>
 
                                     <!-- Source: static Nexus badge -->
-                                    <Border Grid.Column="6"
+                                    <Border Grid.Column="4"
                                             Style="{StaticResource SourceBadgeBorder}"
                                             Background="#d98200"
                                             HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -275,7 +275,7 @@
                                     </Border>
 
                                     <!-- Change identification button -->
-                                    <Button Grid.Column="7"
+                                    <Button Grid.Column="5"
                                             Content="Change"
                                             Command="{Binding ChangeCommand}"
                                             Width="70"

@@ -184,7 +184,7 @@ public class UpdateNotificationViewModel : ViewModelBase
 
                 result.Add(new IdentifiedLinkEntryViewModel(
                     pakName, link.ModId, modName, author, _userLinkStore, _nexusDb,
-                    uuid: link.Uuid));
+                    uuid: link.Uuid, nexusFileName: link.NexusFileName));
             }
             return result;
         }
@@ -669,21 +669,6 @@ public class UpdateNotificationViewModel : ViewModelBase
         RefreshCommand.RaiseCanExecuteChanged();
     }
 
-    // === Entry removal ===
-
-    /// <summary>
-    /// Removes an entry from all observable collections (called after user clicks Unlink).
-    /// </summary>
-    public void RemoveEntry(UpdateEntryViewModel vm)
-    {
-        vm.PropertyChanged -= OnEntrySelectionChanged;
-        Entries.Remove(vm);
-        ActiveEntries.Remove(vm);
-        InactiveEntries.Remove(vm);
-        SyncEntries.Remove(vm);
-        UpdateSummary();
-        RefreshCommand.RaiseCanExecuteChanged();
-    }
 
     // === Logic ===
 
