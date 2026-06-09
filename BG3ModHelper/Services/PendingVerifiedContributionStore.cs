@@ -94,7 +94,7 @@ public class PendingVerifiedContributionStore
     {
         try
         {
-            File.WriteAllText(FilePath,
+            FileHelper.WriteAllTextAtomic(FilePath,
                 JsonConvert.SerializeObject(_queue, Formatting.Indented));
         }
         catch (Exception ex)

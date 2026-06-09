@@ -42,7 +42,7 @@ public static class SettingsStore
     {
         Directory.CreateDirectory(DataFolder);
         var json = JsonConvert.SerializeObject(settings, Formatting.Indented);
-        File.WriteAllText(SettingsFilePath, json);
+        FileHelper.WriteAllTextAtomic(SettingsFilePath, json);
     }
 
     /// <summary>

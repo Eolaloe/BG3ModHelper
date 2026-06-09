@@ -627,7 +627,7 @@ public class UpdateNotificationViewModel : ViewModelBase
     private int                                _webViewTotal;
     private int                                _webViewProgress;
     // nxm mod ID → entry: tracks which entry corresponds to each nxm download
-    private readonly Dictionary<int, UpdateEntryViewModel> _downloadingByNxmId = new();
+    private readonly Dictionary<(int ModId, long FileId), UpdateEntryViewModel> _downloadingByNxmId = new();
 
     // === Cancel tracking ===
     // Items currently enqueued in the active batch (set during ExecuteDownloadSelected)
@@ -847,13 +847,24 @@ public class UpdateNotificationViewModel : ViewModelBase
     private void OnNxmQueued(NxmUrl url, int _)
     {
         if (_currentSlideEntry == null) return;
-        // treat as current entry if modId matches or nxm arrived while this entry's page was open
+        // modId must match
         if (_currentSlideEntry.NexusModId.HasValue &&
             _currentSlideEntry.NexusModId.Value != url.NexusModId) return;
 
+        // If the entry has a known fileId, the NXM fileId must also match.
+        // A mismatch means the user clicked a different variant/file on the same mod page —
+        // tracking the wrong entry would mark it as Updated incorrectly.
+        if (_currentSlideEntry.NexusFileId > 0 &&
+            _currentSlideEntry.NexusFileId != url.NexusFileId)
+        {
+            Logger.Warn($"NXM queued: fileId mismatch for [{_currentSlideEntry.ModName}] — " +
+                        $"expected {_currentSlideEntry.NexusFileId}, got {url.NexusFileId}. Skipping track.");
+            return;
+        }
+
         Application.Current.Dispatcher.Invoke(() =>
         {
-            _downloadingByNxmId[url.NexusModId] = _currentSlideEntry;
+            _downloadingByNxmId[(url.NexusModId, url.NexusFileId)] = _currentSlideEntry;
             _currentSlideEntry.Status = UpdateStatus.Downloading;
             AdvanceSlide();
         });
@@ -861,18 +872,23 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private void OnNxmCompleted(NxmQueueItem item, bool success, string? errorReason)
     {
-        // first: tracked dict populated by OnNxmQueued
+        // first: tracked dict populated by OnNxmQueued (keyed by exact modId+fileId)
         UpdateEntryViewModel? entry = null;
-        if (_downloadingByNxmId.TryGetValue(item.Url.NexusModId, out var tracked))
+        var key = (item.Url.NexusModId, item.Url.NexusFileId);
+        if (_downloadingByNxmId.TryGetValue(key, out var tracked))
         {
             entry = tracked;
-            _downloadingByNxmId.Remove(item.Url.NexusModId);
+            _downloadingByNxmId.Remove(key);
         }
         else
         {
-            // fallback: search by NexusModId
+            // fallback: match by modId+fileId first, then modId-only for entries without a known fileId
             entry = Entries.FirstOrDefault(e =>
-                e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId);
+                        e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId &&
+                        e.NexusFileId == item.Url.NexusFileId)
+                ?? Entries.FirstOrDefault(e =>
+                        e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId &&
+                        e.NexusFileId == 0);
         }
         if (entry == null) return;
 
@@ -882,6 +898,14 @@ public class UpdateNotificationViewModel : ViewModelBase
             {
                 entry.Status     = success ? UpdateStatus.Updated : UpdateStatus.Failed;
                 entry.StatusText = success ? "Updated" : "Failed";
+
+                // Sync group children — NxmInstaller installs all paks in the archive,
+                // so children should reflect the same outcome as the header row.
+                foreach (var child in entry.GroupChildren)
+                {
+                    child.Status     = success ? UpdateStatus.Updated : UpdateStatus.Failed;
+                    child.StatusText = success ? "Updated" : "Failed";
+                }
             }
             UpdateSummary();
             DownloadSelectedCommand.RaiseCanExecuteChanged();
@@ -998,7 +1022,11 @@ public class UpdateNotificationViewModel : ViewModelBase
 
         if (IsWebViewPanelOpen)
         {
-            // Panel already open — just navigate to the new mod's page
+            // Panel already open — just navigate to the new mod's page.
+            // Re-subscribe to OnNxmQueued so row tracking works even when the panel
+            // was opened via the browse button (which doesn't subscribe on its own).
+            UnifiedDownloadQueue.Instance.OnNxmQueued -= OnNxmQueued;
+            UnifiedDownloadQueue.Instance.OnNxmQueued += OnNxmQueued;
             _currentSlideEntry = entry;
             WebViewStatusText  = entry.ModName;
             WebViewCurrentUrl  = url;
@@ -1019,11 +1047,15 @@ public class UpdateNotificationViewModel : ViewModelBase
     private void OnNxmProgress(NxmQueueItem item, DownloadProgress progress)
     {
         UpdateEntryViewModel? entry = null;
-        if (_downloadingByNxmId.TryGetValue(item.Url.NexusModId, out var tracked))
+        if (_downloadingByNxmId.TryGetValue((item.Url.NexusModId, item.Url.NexusFileId), out var tracked))
             entry = tracked;
         else
             entry = Entries.FirstOrDefault(e =>
-                e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId);
+                        e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId &&
+                        e.NexusFileId == item.Url.NexusFileId)
+                ?? Entries.FirstOrDefault(e =>
+                        e.NexusModId.HasValue && e.NexusModId.Value == item.Url.NexusModId &&
+                        e.NexusFileId == 0);
         if (entry == null) return;
 
         Application.Current.Dispatcher.Invoke(() =>

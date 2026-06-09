@@ -395,6 +395,10 @@ public class NexusApi(string apiKey)
             return null;
         }
 
+        // Reset state so callers always see the result of this request, not a stale one
+        LastStatusCode = 0;
+        LastError      = null;
+
         try
         {
             using var request = new HttpRequestMessage(
@@ -412,13 +416,13 @@ public class NexusApi(string apiKey)
             // Update rate limit counters regardless of status code
             UpdateRateLimits(response);
 
+            LastStatusCode = (int)response.StatusCode;
+
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
                 Logger.Warn("NexusApi: invalid API key (401)");
                 return null;
             }
-
-            LastStatusCode = (int)response.StatusCode;
 
             if ((int)response.StatusCode == 429)
             {
@@ -452,6 +456,8 @@ public class NexusApi(string apiKey)
         }
         catch (Exception ex)
         {
+            // LastStatusCode stays 0 — no HTTP response received
+            LastError = ex.Message;
             Logger.Error($"NexusApi: request failed — {path} — {ex.Message}");
             return null;
         }

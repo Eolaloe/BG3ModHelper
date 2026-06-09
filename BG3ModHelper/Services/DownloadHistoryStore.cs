@@ -86,7 +86,7 @@ public class DownloadHistoryStore
     {
         try
         {
-            File.WriteAllText(FilePath,
+            FileHelper.WriteAllTextAtomic(FilePath,
                 JsonConvert.SerializeObject(_entries, Formatting.Indented));
         }
         catch (Exception ex)

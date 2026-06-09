@@ -87,7 +87,7 @@ public class ModFileIdStore
     {
         try
         {
-            File.WriteAllText(FilePath,
+            FileHelper.WriteAllTextAtomic(FilePath,
                 JsonConvert.SerializeObject(_store, Formatting.Indented));
         }
         catch (Exception ex)

@@ -33,7 +33,12 @@ public partial class UpdateNotificationWindow : Window
         UpdatePlatformChecks(settings);
         WebViewHelper.LoginStateChanged += OnLoginStateChanged;
         Loaded += async (_, _) => await InitWebViewAsync();
-        Loaded += (_, _) => SyncHeaderPadding();
+        Loaded += (_, _) =>
+        {
+            SyncHeaderPadding();
+            Logger.Info("[PERF] UpdateNotificationWindow: Loaded");
+        };
+        ContentRendered += (_, _) => Logger.Info("[PERF] UpdateNotificationWindow: ContentRendered");
         SizeChanged += (_, _) => SyncHeaderPadding();
         SourceInitialized += (_, _) => PositionWindow();
         Closed += (_, _) =>
@@ -45,19 +50,37 @@ public partial class UpdateNotificationWindow : Window
     }
 
     /// <summary>
-    /// Syncs header Border right-padding to the ScrollViewer's actual scrollbar width
+    /// Syncs header Border right-padding to the ListBox's internal scrollbar width
     /// so that the * (Name) column resolves to the same width in both header and data rows.
     /// Called on Loaded and SizeChanged to handle DPI and window resize.
     /// </summary>
     private void SyncHeaderPadding()
     {
-        SyncHeader(ActiveHeaderBorder,   ActiveScroller);
-        SyncHeader(InactiveHeaderBorder, InactiveScroller);
+        SyncHeader(ActiveHeaderBorder,   GetInternalScrollViewer(ActiveList));
+        SyncHeader(InactiveHeaderBorder, GetInternalScrollViewer(InactiveList));
+    }
+
+    /// <summary>
+    /// Walks the visual tree depth-first to find the first ScrollViewer child.
+    /// Used to locate the internal ScrollViewer inside a ListBox after its template is applied.
+    /// </summary>
+    private static System.Windows.Controls.ScrollViewer? GetInternalScrollViewer(
+        System.Windows.DependencyObject parent)
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is System.Windows.Controls.ScrollViewer sv) return sv;
+            var found = GetInternalScrollViewer(child);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private static void SyncHeader(System.Windows.Controls.Border header,
-                                    System.Windows.Controls.ScrollViewer scroller)
+                                    System.Windows.Controls.ScrollViewer? scroller)
     {
+        if (scroller == null) return;
         // Guard: if viewport hasn't been measured yet (e.g. during layout transition when
         // the WebView panel opens), ViewportWidth is 0 → scrollbarWidth = ActualWidth → giant
         // right padding that clips all header text.  Skip and let the next SizeChanged fix it.

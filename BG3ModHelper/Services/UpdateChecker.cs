@@ -43,7 +43,7 @@ public static class UpdateChecker
             : Task.CompletedTask;
 
         Logger.Info("UpdateChecker: fetching Nexus recently-updated list and mod.io cache in parallel...");
-        await Task.WhenAll(recentlyUpdatedTask, modioTask);
+        await Task.WhenAll(recentlyUpdatedTask, modioTask).ConfigureAwait(false);
 
         var recentlyUpdated = recentlyUpdatedTask.Result;
         Logger.Info($"UpdateChecker: {recentlyUpdated.Count} mod(s) updated in the last month (Nexus)");
@@ -283,7 +283,7 @@ public static class UpdateChecker
                         nexusDb.IsStale &&
                         recentlyUpdated.Contains(dbEntry.NexusModId))
                     {
-                        Logger.Debug($"Nexus [{mod.MetaModuleName}] DB stale + in recently-updated — verifying via API");
+                        Logger.Info($"[PERF] Nexus [{mod.MetaModuleName}] DB stale + in recently-updated — verifying via API");
                         var latestFile = await nexusApi.GetLatestFileAsync(dbEntry.NexusModId);
                         if (latestFile != null && latestFile.NexusFileId != dbEntry.NexusFileId)
                         {
@@ -390,7 +390,7 @@ public static class UpdateChecker
                     if (nexusApi != null && knownModId.HasValue &&
                         recentlyUpdated.Count > 0 && recentlyUpdated.Contains(knownModId.Value))
                     {
-                        Logger.Debug($"Nexus [{mod.MetaModuleName}] no DB entry but in recently-updated — calling GetLatestFileAsync + GetModNameAsync");
+                        Logger.Info($"[PERF] Nexus [{mod.MetaModuleName}] API fallback — calling GetLatestFileAsync + GetModNameAsync");
                         var latestFileTask = nexusApi.GetLatestFileAsync(knownModId.Value);
                         var modNameTask    = nexusApi.GetModNameAsync(knownModId.Value);
                         await Task.WhenAll(latestFileTask, modNameTask);

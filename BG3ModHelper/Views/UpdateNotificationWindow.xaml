@@ -19,6 +19,26 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
+        <!-- ListBoxItem container style: strips all ListBox visual chrome (selection highlight,
+             hover, focus border) so the row DataTemplate owns all visual appearance.
+             HorizontalContentAlignment=Stretch ensures the inner Grid fills the list width.
+             ContentPresenter must explicitly bind HorizontalAlignment via TemplateBinding so
+             the * column in each row's Grid measures against the full ListBox viewport width. -->
+        <Style x:Key="VirtualListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding"                     Value="0"/>
+            <Setter Property="Margin"                      Value="0"/>
+            <Setter Property="HorizontalContentAlignment"  Value="Stretch"/>
+            <Setter Property="Background"                  Value="Transparent"/>
+            <Setter Property="FocusVisualStyle"            Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SwitchButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#cccccc"/>
@@ -46,6 +66,7 @@
 
         <DataTemplate DataType="{x:Type vm:UpdateEntryViewModel}">
             <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5"
+                    HorizontalAlignment="Stretch"
                     Background="{Binding RowBackground}">
                 <Border.Style>
                     <Style TargetType="Border">
@@ -541,10 +562,26 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer x:Name="ActiveScroller"
-                                  Grid.Row="2" VerticalScrollBarVisibility="Visible">
-                        <ItemsControl ItemsSource="{Binding ActiveEntriesView}"/>
-                    </ScrollViewer>
+                    <!-- VirtualizingStackPanel via ListBox — renders only visible rows.
+                         CanContentScroll="True"  : logical scrolling enables virtualization.
+                         HorizontalScrollBarVisibility="Disabled" : forces content to fit viewport
+                           width so the * column gets a finite measure constraint. Without this,
+                           WPF measures rows with Infinity width → * expands to longest title on
+                           the visible page → column widths vary per scroll position.
+                         VerticalScrollBarVisibility="Visible" : always-present scrollbar keeps
+                           viewport width constant across all measure passes. -->
+                    <ListBox x:Name="ActiveList"
+                             Grid.Row="2"
+                             ItemsSource="{Binding ActiveEntriesView}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.CanContentScroll="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Visible"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Standard"
+                             ItemContainerStyle="{StaticResource VirtualListItemStyle}"/>
                 </Grid>
 
                 <!-- ── Inactive section ── -->
@@ -613,10 +650,18 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer x:Name="InactiveScroller"
-                                  Grid.Row="2" VerticalScrollBarVisibility="Visible">
-                        <ItemsControl ItemsSource="{Binding InactiveEntriesView}"/>
-                    </ScrollViewer>
+                    <ListBox x:Name="InactiveList"
+                             Grid.Row="2"
+                             ItemsSource="{Binding InactiveEntriesView}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.CanContentScroll="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Visible"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Standard"
+                             ItemContainerStyle="{StaticResource VirtualListItemStyle}"/>
                 </Grid>
 
                 <!-- ── Sync Recommended section ── -->
@@ -680,10 +725,19 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer x:Name="SyncScroller"
-                                  Grid.Row="2" VerticalScrollBarVisibility="Auto" MaxHeight="200">
-                        <ItemsControl ItemsSource="{Binding SyncEntriesView}"/>
-                    </ScrollViewer>
+                    <ListBox x:Name="SyncList"
+                             Grid.Row="2"
+                             MaxHeight="200"
+                             ItemsSource="{Binding SyncEntriesView}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.CanContentScroll="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Standard"
+                             ItemContainerStyle="{StaticResource VirtualListItemStyle}"/>
                 </Grid>
             </Grid>
 

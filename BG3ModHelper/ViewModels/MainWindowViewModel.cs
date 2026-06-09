@@ -500,7 +500,9 @@ public class MainWindowViewModel : ViewModelBase
             OnPropertyChanged(nameof(LastCheckDisplay));
 
             // Persist NexusModIds populated during this check
+            var _saveIdsSw = System.Diagnostics.Stopwatch.StartNew();
             ModScanner.SaveNexusIds(_installedMods);
+            Logger.Info($"[PERF] SaveNexusIds: {_saveIdsSw.ElapsedMilliseconds}ms");
             _installedModsCount = _installedMods.Count;
             OnPropertyChanged(nameof(InstalledModsCountDisplay));
 
@@ -514,18 +516,6 @@ public class MainWindowViewModel : ViewModelBase
 
             AddActivity(updates.Count + " update(s) available");
             Logger.Info(updates.Count + " updates found");
-
-            // Fetch changelogs in parallel for all Nexus entries
-            if (nexusApi != null)
-            {
-                StatusText = "Fetching changelogs...";
-                var changelogTasks = updates
-                    .Where(u => u.NexusModId.HasValue &&
-                                u.AvailableSources.Contains(UpdateSource.NEXUSMODS))
-                    .Select(u => nexusApi.GetChangelogAsync(u.NexusModId!.Value, u.NexusFileVersion)
-                        .ContinueWith(t => { if (t.Result != null) u.Changelog = t.Result; }));
-                await Task.WhenAll(changelogTasks);
-            }
 
             // Phase 6: open update notification window
             var breakdown = new List<string>();
@@ -560,6 +550,8 @@ public class MainWindowViewModel : ViewModelBase
                     userLinkStore: _userLinks);
             }
 
+            var _sw = System.Diagnostics.Stopwatch.StartNew();
+
             var notificationVm = new UpdateNotificationViewModel(
                 updates,
                 _settings.NexusIsPremium,
@@ -572,6 +564,8 @@ public class MainWindowViewModel : ViewModelBase
                 reloadFunc,
                 _userLinks,
                 _nexusIdDb);
+            Logger.Info($"[PERF] UpdateNotificationViewModel ctor: {_sw.ElapsedMilliseconds}ms");
+            _sw.Restart();
 
             notificationVm.NexusMappingAdded += (uuid, modId, fileId) =>
             {
@@ -583,9 +577,24 @@ public class MainWindowViewModel : ViewModelBase
             {
                 Owner = _ownerWindow
             };
+            Logger.Info($"[PERF] UpdateNotificationWindow ctor: {_sw.ElapsedMilliseconds}ms");
+            _sw.Restart();
+
             _updateWindow = window;
             window.Closed += (_, _) => _updateWindow = null;
             window.Show();
+            Logger.Info($"[PERF] window.Show(): {_sw.ElapsedMilliseconds}ms");
+
+            // Fetch changelogs in background — window is already open.
+            // Tooltips re-evaluate on each hover, so values will appear once they arrive.
+            if (nexusApi != null)
+            {
+                _ = Task.WhenAll(updates
+                    .Where(u => u.NexusModId.HasValue &&
+                                u.AvailableSources.Contains(UpdateSource.NEXUSMODS))
+                    .Select(u => nexusApi.GetChangelogAsync(u.NexusModId!.Value, u.NexusFileVersion)
+                        .ContinueWith(t => { if (t.Result != null) u.Changelog = t.Result; })));
+            }
         }
         catch (Exception ex)
         {

@@ -284,7 +284,7 @@ public class UserModLinkStore
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
             var payload = new { nexus = _nexusLinks, external = _externalLinks };
-            File.WriteAllText(FilePath, JsonConvert.SerializeObject(payload, Formatting.Indented));
+            FileHelper.WriteAllTextAtomic(FilePath, JsonConvert.SerializeObject(payload, Formatting.Indented));
         }
         catch (Exception ex)
         {

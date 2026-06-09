@@ -55,7 +55,7 @@ public sealed class PreservedModsStore
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath,
+            FileHelper.WriteAllTextAtomic(FilePath,
                 JsonConvert.SerializeObject(
                     new PersistedData { Preserved = [.._uuids] },
                     Formatting.Indented));

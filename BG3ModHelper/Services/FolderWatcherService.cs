@@ -174,7 +174,11 @@ public sealed class FolderWatcherService : IDisposable
             info = await AnalyzeArchive(path);
             if (info != null) break;
             if (attempt < backoffSeconds.Length - 1)
+            {
+                Logger.Warn($"FolderWatcher: analyze attempt {attempt + 1} failed for " +
+                            $"{Path.GetFileName(path)}, retrying in {backoffSeconds[attempt]}s");
                 await Task.Delay(TimeSpan.FromSeconds(backoffSeconds[attempt]));
+            }
         }
 
         if (info == null)
@@ -187,29 +191,34 @@ public sealed class FolderWatcherService : IDisposable
     }
 
     /// <summary>
-    /// Polls file size every 500ms until stable for 3 consecutive checks (~1.5s),
-    /// or until maxWaitSec elapses. Returns false on timeout or file deletion.
+    /// Polls file size and last-write time every 500ms until both are stable for
+    /// 3 consecutive checks (~1.5s), or until maxWaitSec elapses.
+    /// Returns false on timeout or file deletion.
     /// </summary>
     private static async Task<bool> WaitForStableFileAsync(string path, int maxWaitSec = 60)
     {
-        long lastSize    = -1;
-        int  stableCount = 0;
-        var  deadline    = DateTime.UtcNow.AddSeconds(maxWaitSec);
+        long     lastSize      = -1;
+        DateTime lastWriteTime = DateTime.MinValue;
+        int      stableCount   = 0;
+        var      deadline      = DateTime.UtcNow.AddSeconds(maxWaitSec);
 
         while (DateTime.UtcNow < deadline)
         {
             if (!File.Exists(path)) return false;
             try
             {
-                var size = new FileInfo(path).Length;
-                if (size == lastSize)
+                var fi        = new FileInfo(path);
+                var size      = fi.Length;
+                var writeTime = fi.LastWriteTimeUtc;
+                if (size == lastSize && writeTime == lastWriteTime)
                 {
                     if (++stableCount >= 3) return true;
                 }
                 else
                 {
-                    stableCount = 0;
-                    lastSize    = size;
+                    stableCount   = 0;
+                    lastSize      = size;
+                    lastWriteTime = writeTime;
                 }
             }
             catch

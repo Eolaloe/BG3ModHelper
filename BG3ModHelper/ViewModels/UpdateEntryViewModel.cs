@@ -489,8 +489,9 @@ public partial class UpdateEntryViewModel : ViewModelBase
         _entry.NexusFileVersion   = chosen.FileVersion;
         _entry.NexusModName       = chosen.ModName;
         _entry.NexusModPageUrl    = chosen.PageUrl;
-        _entry.AvailableSources.Clear();
-        _entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+        // Only add Nexus — preserve existing sources (e.g. mod.io for Both-source mods)
+        if (!_entry.AvailableSources.Contains(UpdateSource.NEXUSMODS))
+            _entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
 
         OnPropertyChanged(nameof(IsAmbiguous));
         OnPropertyChanged(nameof(RowBackground));
@@ -949,7 +950,20 @@ public partial class UpdateEntryViewModel : ViewModelBase
             return;
         }
 
-        _entry.NexusModId = modId;
+        _entry.NexusModId      = modId;
+        _entry.NexusModPageUrl = $"https://www.nexusmods.com/baldursgate3/mods/{modId}";
+
+        if (!_entry.AvailableSources.Contains(UpdateSource.NEXUSMODS))
+            _entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+
+        // Persist link immediately (fileId unknown until first download)
+        if (_userLinkStore != null && !string.IsNullOrEmpty(_entry.PakFilePath))
+            _userLinkStore.SetNexusLink(
+                System.IO.Path.GetFileName(_entry.PakFilePath),
+                modId,
+                uuid:        _entry.MetaUuid      ?? "",
+                pakFilePath: _entry.PakFilePath);
+
         NexusRegistered?.Invoke(this, modId);
         _nexusUrlInput      = "";
         _isRegisterExpanded = false;
@@ -960,7 +974,18 @@ public partial class UpdateEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanAutoDownload));
         OnPropertyChanged(nameof(ActionLabel));
         OnPropertyChanged(nameof(ActionStyle));
+        OnPropertyChanged(nameof(ActivePageUrl));
+        OnPropertyChanged(nameof(CanSwitchToNexus));
+        OnPropertyChanged(nameof(CanSwitchToModio));
+        OnPropertyChanged(nameof(HasMultipleSources));
+        OnPropertyChanged(nameof(ShowSwitchButtons));
+        OnPropertyChanged(nameof(SourceBadge));
+        OnPropertyChanged(nameof(SourceBadgeColor));
+        OnPropertyChanged(nameof(CanBeQueued));
+        OnPropertyChanged(nameof(IsActionEnabled));
+        OnPropertyChanged(nameof(IsActionButtonEnabled));
         PrimaryActionCommand.RaiseCanExecuteChanged();
+        OpenPageCommand.RaiseCanExecuteChanged();
     }
 }
 
