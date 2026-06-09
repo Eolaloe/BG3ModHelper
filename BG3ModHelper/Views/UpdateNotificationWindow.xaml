@@ -4,74 +4,19 @@
         xmlns:vm="clr-namespace:BG3ModHelper.ViewModels"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="{Binding TitleText}"
-        Width="850" Height="1150"
-        MinWidth="720" MinHeight="500"
+        Width="930" Height="1150"
+        MinWidth="800" MinHeight="500"
         WindowStartupLocation="Manual"
         ResizeMode="CanResizeWithGrip">
 
     <Window.Resources>
+        <!-- PrimaryActionButton / SecondaryActionButton / RegisterActionButton /
+             StopActionButton / ModNameButton are now in App.xaml (shared with ModIdentifiedListWindow) -->
+
         <Style x:Key="ColHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="Foreground" Value="#888888"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
-        <Style x:Key="PrimaryActionButton" TargetType="Button">
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="#0078d4"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="12,4"/>
-            <Setter Property="MinWidth" Value="90"/>
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#106ebe"/></Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Background" Value="#cccccc"/>
-                                <Setter Property="Foreground" Value="#888888"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="SecondaryActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
-            <Setter Property="Background" Value="#555555"/>
-        </Style>
-
-        <Style x:Key="RegisterActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
-            <Setter Property="Background" Value="#888888"/>
-        </Style>
-
-        <Style x:Key="StopActionButton" TargetType="Button">
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="#c42b2b"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="12,4"/>
-            <Setter Property="MinWidth" Value="90"/>
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#a32020"/></Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
 
         <Style x:Key="SwitchButton" TargetType="Button">
@@ -99,30 +44,9 @@
             </Setter>
         </Style>
 
-        <Style x:Key="ModNameButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="Transparent" ToolTip="{TemplateBinding ToolTip}">
-                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Opacity" Value="0.65"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <DataTemplate DataType="{x:Type vm:UpdateEntryViewModel}">
-            <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5">
+            <Border BorderBrush="#e0e0e0" BorderThickness="0,0,0,1" Padding="8,5"
+                    Background="{Binding RowBackground}">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Style.Triggers>
@@ -137,13 +61,14 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="30"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="80"/>   <!-- author -->
                             <ColumnDefinition Width="22"/>
                             <ColumnDefinition Width="80"/>
                             <ColumnDefinition Width="20"/>
                             <ColumnDefinition Width="80"/>
                             <ColumnDefinition Width="100"/>  <!-- source -->
                             <ColumnDefinition Width="100"/>  <!-- action -->
-                            <ColumnDefinition Width="85"/>   <!-- status -->
+                            <ColumnDefinition Width="100"/>  <!-- status -->
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Column="0"
                                   IsChecked="{Binding IsSelected, Mode=TwoWay}"
@@ -187,8 +112,15 @@
                                 </DockPanel>
                             </StackPanel>
                         </Button>
-                        <!-- Lock button (col 2) -->
-                        <Button Grid.Column="2"
+                        <!-- Author (col 2) -->
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding LocalAuthor}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"
+                                   FontSize="11" Foreground="#666666"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="0,0,4,0"/>
+                        <!-- Lock button (col 3) -->
+                        <Button Grid.Column="3"
                                 Content="🔒"
                                 Foreground="{Binding PreserveLockColor}"
                                 Command="{Binding TogglePreserveCommand}"
@@ -198,21 +130,21 @@
                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                 ToolTip="{Binding PreserveLockTooltip}"
                                 ToolTipService.InitialShowDelay="400"/>
-                        <TextBlock Grid.Column="3"
+                        <TextBlock Grid.Column="4"
                                    Text="{Binding CurrentVersion}"
                                    VerticalAlignment="Center" HorizontalAlignment="Right"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="0,0,2,0"/>
-                        <TextBlock Grid.Column="4"
+                        <TextBlock Grid.Column="5"
                                    Text="→"
                                    VerticalAlignment="Center" HorizontalAlignment="Center"
                                    FontSize="11" Foreground="#888888"/>
-                        <TextBlock Grid.Column="5"
+                        <TextBlock Grid.Column="6"
                                    Text="{Binding NewVersionDisplay}"
                                    VerticalAlignment="Center" HorizontalAlignment="Left"
                                    FontFamily="Consolas" FontSize="11" Foreground="#444444"
                                    Margin="2,0,0,0"/>
-                        <Grid Grid.Column="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid Grid.Column="7" HorizontalAlignment="Center" VerticalAlignment="Center">
 
                             <!-- Single source: normal badge -->
                             <Border Style="{StaticResource SourceBadgeBorder}"
@@ -297,9 +229,8 @@
                             </Button>
 
                         </Grid>
-                        <Button Grid.Column="7"
+                        <Button Grid.Column="8"
                                 Content="{Binding ActionLabel}"
-                                Style="{Binding ActionStyle, Converter={StaticResource StyleKeyConverter}}"
                                 Command="{Binding PrimaryActionCommand}"
                                 IsEnabled="{Binding IsActionButtonEnabled}"
                                 Width="70"
@@ -315,16 +246,26 @@
                                 </ToolTip>
                             </Button.ToolTip>
                         </Button>
-                        <StackPanel Grid.Column="8" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding StatusText}"
-                                       Foreground="{Binding StatusColor}"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="{Binding StatusProgress}"
-                                       Foreground="{Binding StatusColor}"
-                                       FontSize="9" HorizontalAlignment="Center"
-                                       Visibility="{Binding HasStatusProgress, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                        </StackPanel>
+                        <!-- Col 9: status text OR Change button — Grid overlay so both share
+                             the same cell space and Change button height matches col-8 action button exactly. -->
+                        <Grid Grid.Column="9" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <StackPanel HorizontalAlignment="Center"
+                                        Visibility="{Binding ShowChangeButton, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding StatusText}"
+                                           Foreground="{Binding StatusColor}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding StatusProgress}"
+                                           Foreground="{Binding StatusColor}"
+                                           FontSize="9" HorizontalAlignment="Center"
+                                           Visibility="{Binding HasStatusProgress, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </StackPanel>
+                            <Button Content="Change"
+                                    Command="{Binding ChangeIdentificationCommand}"
+                                    Visibility="{Binding ShowChangeButton, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Width="70"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
                     </Grid>
                     <!-- Group children (expanded pak list) -->
                     <ItemsControl ItemsSource="{Binding GroupChildren}"
@@ -379,7 +320,7 @@
     <!-- Root: left panel + expandable WebView panel side by side -->
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="720"/>
+            <ColumnDefinition Width="*" MinWidth="800"/>
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
@@ -401,7 +342,34 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="{Binding TitleText}" FontSize="16" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" Margin="0,2,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="{Binding SummaryText}" FontSize="12" Foreground="#666666" VerticalAlignment="Center"/>
+                            <TextBlock Text="  ·  " FontSize="12" Foreground="#cccccc" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding NexusRateLimitText}"
+                                       Foreground="{Binding NexusRateLimitColor}"
+                                       FontSize="11" VerticalAlignment="Center"
+                                       ToolTip="Nexus API calls remaining this hour (h) and today (d)&#x0a;Limit: 20,000/day · recovers 500/hour after exhaustion"/>
+                            <Button Command="{Binding CheckRateLimitsCommand}"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="4,0,0,0" Cursor="Hand" FontSize="11"
+                                    ToolTip="Refresh Nexus API rate limit (uses 1 call)"
+                                    VerticalAlignment="Center">
+                                <TextBlock FontSize="13">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text"       Value="↻"/>
+                                            <Setter Property="Foreground" Value="#aaaaaa"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding RateLimitChecking}" Value="True">
+                                                    <Setter Property="Text"       Value="…"/>
+                                                    <Setter Property="Foreground" Value="#888888"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,16,0">
                         <Button x:Name="NexusLoginBtn"
@@ -499,13 +467,14 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="30"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="80"/>   <!-- author -->
                                 <ColumnDefinition Width="22"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="20"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="85"/>
+                                <ColumnDefinition Width="100"/>
                             </Grid.ColumnDefinitions>
                             <!-- Master select-all checkbox -->
                             <CheckBox Grid.Column="0"
@@ -517,20 +486,25 @@
                                     Command="{Binding SortActiveByNameCommand}">
                                 <TextBlock Text="{Binding ActiveNameSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <Button Grid.Column="2" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                            <Button Grid.Column="2" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                    Command="{Binding SortActiveByAuthorCommand}">
+                                <TextBlock Text="{Binding ActiveAuthorSortHeader}" Style="{StaticResource ColHeader}"/>
+                            </Button>
+                            <Button Grid.Column="3" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
                                     Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
                                     Command="{Binding SortActiveByLockCommand}">
                                 <TextBlock Text="{Binding ActiveLockSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Text="Version"
+                            <TextBlock Grid.Column="4" Grid.ColumnSpan="3" Text="Version"
                                        Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <Button Grid.Column="6" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                            <Button Grid.Column="7" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
                                     Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
                                     Command="{Binding SortActiveBySourceCommand}">
                                 <TextBlock Text="{Binding ActiveSourceSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <TextBlock Grid.Column="7" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="8" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="8" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="9" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                         </Grid>
                     </Border>
 
@@ -565,13 +539,14 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="30"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="80"/>   <!-- author -->
                                 <ColumnDefinition Width="22"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="20"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="85"/>
+                                <ColumnDefinition Width="100"/>
                             </Grid.ColumnDefinitions>
                             <!-- Master select-all checkbox -->
                             <CheckBox Grid.Column="0"
@@ -583,20 +558,25 @@
                                     Command="{Binding SortInactiveByNameCommand}">
                                 <TextBlock Text="{Binding InactiveNameSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <Button Grid.Column="2" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                            <Button Grid.Column="2" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                    Command="{Binding SortInactiveByAuthorCommand}">
+                                <TextBlock Text="{Binding InactiveAuthorSortHeader}" Style="{StaticResource ColHeader}"/>
+                            </Button>
+                            <Button Grid.Column="3" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
                                     Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
                                     Command="{Binding SortInactiveByLockCommand}">
                                 <TextBlock Text="{Binding InactiveLockSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Text="Version"
+                            <TextBlock Grid.Column="4" Grid.ColumnSpan="3" Text="Version"
                                        Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <Button Grid.Column="6" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                            <Button Grid.Column="7" HorizontalAlignment="Center" HorizontalContentAlignment="Center"
                                     Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
                                     Command="{Binding SortInactiveBySourceCommand}">
                                 <TextBlock Text="{Binding InactiveSourceSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <TextBlock Grid.Column="7" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="8" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="8" Text="Action" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="9" Text="Status" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                         </Grid>
                     </Border>
 
@@ -634,13 +614,14 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="30"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="80"/>   <!-- author -->
                                 <ColumnDefinition Width="22"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="20"/>
                                 <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="100"/>
                                 <ColumnDefinition Width="100"/>
-                                <ColumnDefinition Width="85"/>
+                                <ColumnDefinition Width="100"/>
                             </Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0"
                                       IsChecked="{Binding SyncMasterChecked, Mode=TwoWay}"
@@ -651,13 +632,18 @@
                                     Command="{Binding SortSyncByNameCommand}">
                                 <TextBlock Text="{Binding SyncNameSortHeader}" Style="{StaticResource ColHeader}"/>
                             </Button>
-                            <TextBlock Grid.Column="2" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"
+                            <Button Grid.Column="2" HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                                    Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                                    Command="{Binding SortSyncByAuthorCommand}">
+                                <TextBlock Text="{Binding SyncAuthorSortHeader}" Style="{StaticResource ColHeader}"/>
+                            </Button>
+                            <TextBlock Grid.Column="3" Style="{StaticResource ColHeader}" HorizontalAlignment="Center"
                                        Text="{Binding SyncLockSortHeader}"/>
-                            <TextBlock Grid.Column="3" Grid.ColumnSpan="3" Text="Version"
+                            <TextBlock Grid.Column="4" Grid.ColumnSpan="3" Text="Version"
                                        Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="6" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="7" Text="Action"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="8" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="7" Text="Source"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="8" Text="Action"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="9" Text="Status"  Style="{StaticResource ColHeader}" HorizontalAlignment="Center"/>
                         </Grid>
                     </Border>
 
@@ -674,25 +660,26 @@
             </Border>
 
             <Border Grid.Row="4" Background="#f8f8f8" BorderBrush="#e0e0e0" BorderThickness="0,1,0,0" Padding="16,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal"/>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <Button Content="Refresh"
-                                Command="{Binding RefreshCommand}"
-                                Padding="12,5" Margin="0,0,8,0"/>
-                        <Button Content="Download Selected"
-                                Style="{StaticResource PrimaryActionButton}"
-                                Command="{Binding DownloadSelectedCommand}"
-                                Height="32" MinWidth="150" FontSize="13" Margin="0,0,8,0"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"/>
-                        <Button Content="Close" Command="{Binding CloseCommand}" Padding="16,5"/>
-                    </StackPanel>
-                </Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Identified"
+                            Command="{Binding ShowIdentifiedListCommand}"
+                            Padding="12,5" Margin="0,0,8,0"
+                            ToolTip="View and manage mods that have been manually identified"/>
+                    <Button Content="Refresh"
+                            Command="{Binding RefreshCommand}"
+                            Padding="12,5" Margin="0,0,8,0"/>
+                    <Button Content="Download Selected"
+                            Style="{StaticResource PrimaryActionButton}"
+                            Command="{Binding DownloadSelectedCommand}"
+                            Height="32" MinWidth="150" FontSize="13" Margin="0,0,8,0"
+                            Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                    <Button Content="Stop All"
+                            Style="{StaticResource StopActionButton}"
+                            Command="{Binding StopAllCommand}"
+                            Height="32" MinWidth="150" FontSize="13" Margin="0,0,8,0"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <Button Content="Close" Command="{Binding CloseCommand}" Padding="16,5"/>
+                </StackPanel>
             </Border>
         </Grid>
 

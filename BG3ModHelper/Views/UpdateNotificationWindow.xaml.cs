@@ -15,6 +15,7 @@ public partial class UpdateNotificationWindow : Window
     private readonly AppSettings _settings;
     private double _leftPanelWidth;
     private bool   _suppressZoomEvent;
+    private int    _pendingReportModId;   // 0 = none pending
 
     public UpdateNotificationWindow(UpdateNotificationViewModel vm, AppSettings settings)
     {
@@ -22,9 +23,11 @@ public partial class UpdateNotificationWindow : Window
         _vm       = vm;
         _settings = settings;
         DataContext = vm;
-        vm.CloseRequested  += Close;
-        vm.LoginRequired   += OnLoginRequired;
-        vm.PropertyChanged += OnVmPropertyChanged;
+        vm.CloseRequested              += Close;
+        vm.LoginRequired               += OnLoginRequired;
+        vm.PropertyChanged             += OnVmPropertyChanged;
+        vm.DisambiguationRequested     += OnDisambiguationRequested;
+        vm.ShowIdentifiedListRequested += OnShowIdentifiedList;
         UpdateNexusLoginButton(WebViewHelper.IsLoggedIn());
         WebViewHelper.LoginStateChanged += OnLoginStateChanged;
         Loaded += async (_, _) => await InitWebViewAsync();
@@ -53,6 +56,11 @@ public partial class UpdateNotificationWindow : Window
     private static void SyncHeader(System.Windows.Controls.Border header,
                                     System.Windows.Controls.ScrollViewer scroller)
     {
+        // Guard: if viewport hasn't been measured yet (e.g. during layout transition when
+        // the WebView panel opens), ViewportWidth is 0 → scrollbarWidth = ActualWidth → giant
+        // right padding that clips all header text.  Skip and let the next SizeChanged fix it.
+        if (scroller.ViewportWidth <= 0) return;
+
         // scrollbarWidth = actual width taken by the vertical scrollbar
         var scrollbarWidth = scroller.ActualWidth - scroller.ViewportWidth;
         if (scrollbarWidth < 0) scrollbarWidth = 0;
@@ -69,8 +77,13 @@ public partial class UpdateNotificationWindow : Window
         var centerX  = workArea.Left + workArea.Width  / 2.0;
         var centerY  = workArea.Top  + workArea.Height / 2.0;
 
+        // Clamp height to the work area so the window never opens taller than the screen
+        // (common at high DPI scaling where logical units are smaller than physical pixels).
+        if (this.Height > workArea.Height)
+            this.Height = workArea.Height;
+
         Left = centerX - this.Width / 2.0 - this.Width / 2.0;
-        Top  = centerY - this.Height / 2.0;
+        Top  = Math.Max(workArea.Top, Math.Min(centerY - this.Height / 2.0, workArea.Bottom - this.Height));
     }
 
     private async Task InitWebViewAsync()
@@ -153,6 +166,11 @@ public partial class UpdateNotificationWindow : Window
         NexusWebView.ZoomFactor = _settings.WebViewZoom;
         _suppressZoomEvent = false;
         UpdateZoomDisplay(_settings.WebViewZoom);
+
+        // Clear pending report flag — navigation to the mod page is all we need.
+        // Auto-selection was removed; the user follows the guide in the disambiguation dialog.
+        if (_pendingReportModId > 0 && url.Contains($"/mods/{_pendingReportModId}"))
+            _pendingReportModId = 0;
 
         const string cookieScript = @"
             (function() {
@@ -303,5 +321,33 @@ public partial class UpdateNotificationWindow : Window
             var win = new NexusLoginWindow { Owner = this };
             win.ShowDialog();
         }
+    }
+
+    private void OnShowIdentifiedList()
+    {
+        var win = new ModIdentifiedListWindow(_vm.IdentifiedEntries, _vm.LinkedOnlyEntries) { Owner = this };
+        win.Show();
+    }
+
+    private void OnDisambiguationRequested(UpdateEntryViewModel entryVm, IReadOnlyList<NexusModCandidate> candidates)
+    {
+        var pakFileName = System.IO.Path.GetFileName(entryVm.PakFilePath);
+        var dialog = new ModDisambiguationDialog(pakFileName, candidates) { Owner = this };
+        dialog.ReportAbuseRequested += OnReportAbuseRequested;
+        dialog.Confirmed            += entryVm.ApplyDisambiguation;
+        dialog.Show();   // non-modal: dialog stays on top of owner but doesn't block interaction
+    }
+
+    private void OnReportAbuseRequested(int modId)
+    {
+        _pendingReportModId = modId;
+        var modPageUrl = $"https://www.nexusmods.com/baldursgate3/mods/{modId}";
+
+        // Go through the ViewModel so IsWebViewPanelOpen stays in sync with the close button.
+        // Calling OpenWebViewPanel() directly left the flag false → close button had nothing to toggle.
+        if (!_vm.IsWebViewPanelOpen)
+            _vm.RequestOpenWebViewPanel();
+
+        NavigateWebView(modPageUrl);
     }
 }

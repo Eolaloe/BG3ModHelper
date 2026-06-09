@@ -95,44 +95,161 @@ public static class UpdateChecker
                 // Case 3 fallback: user manually linked this pak to a Nexus mod ID
                 if (dbEntries.Count == 0 && userLinkStore != null)
                 {
-                    var userModId = userLinkStore.GetNexusModId(mod.PakFileName);
-                    if (userModId.HasValue)
+                    var userLink = userLinkStore.GetNexusLink(mod.PakFileName);
+                    if (userLink != null && IsUserLinkHashValid(userLink, mod.PakFilePath, userLinkStore, mod.PakFileName))
                     {
-                        dbEntries = nexusDb.LookupByModId(userModId.Value);
+                        dbEntries = nexusDb.LookupByModId(userLink.ModId);
                         if (dbEntries.Count > 0)
-                            Logger.Info($"UpdateChecker: [{mod.MetaModuleName}] resolved via user link → Nexus mod {userModId.Value}");
+                            Logger.Info($"UpdateChecker: [{mod.MetaModuleName}] resolved via user link → Nexus mod {userLink.ModId}");
                     }
                 }
 
-                // Resolve conflict: uuid match → fileIdStore modId match → skip
-                var dbEntry = dbEntries.Count == 1
-                    ? dbEntries[0]
-                    : dbEntries.FirstOrDefault(e =>
-                        string.Equals(e.MetaUuid, mod.MetaUuid,
-                            StringComparison.OrdinalIgnoreCase));
+                // Resolve conflict: userLink → uuid match → fileIdStore fileId/modId → ambiguous
+                PakLookupEntry? dbEntry;
+                bool            needsDisambiguation = false;
+                // Pre-compute: does this pak match multiple distinct Nexus mods?
+                // Stored as a lightweight flag on the entry — candidates are re-queried on demand.
+                bool hasMultipleCandidates = dbEntries.Count > 1 &&
+                    dbEntries.Select(e => e.NexusModId).Distinct().Count() > 1;
 
-                if (dbEntry == null && dbEntries.Count > 1 && fileIdStore != null)
+                if (dbEntries.Count == 0)
                 {
-                    var stored = fileIdStore.GetEntry(mod.MetaUuid);
-                    if (stored != null && stored.NexusModId != 0)
-                        dbEntry = dbEntries.FirstOrDefault(e => e.NexusModId == stored.NexusModId);
+                    dbEntry = null; // no DB match — handled by logging/fallback below
+                }
+                else if (dbEntries.Count == 1)
+                {
+                    dbEntry = dbEntries[0];
+                }
+                else
+                {
+                    // If the user has already made a disambiguation choice for this pak, honour it —
+                    // but only if the pak file hash still matches (guards against mod replacement).
+                    if (userLinkStore != null)
+                    {
+                        var userLink = userLinkStore.GetNexusLink(mod.PakFileName);
+                        if (userLink != null && IsUserLinkHashValid(userLink, mod.PakFilePath, userLinkStore, mod.PakFileName))
+                        {
+                            var preferred = dbEntries.Where(e => e.NexusModId == userLink.ModId).ToList();
+                            if (preferred.Count > 0)
+                            {
+                                dbEntries = preferred;
+                                dbEntry   = preferred[0];
+                                goto resolvedEntry;
+                            }
+                        }
+                    }
+
+                    var uuidMatches = dbEntries
+                        .Where(e => string.Equals(e.MetaUuid, mod.MetaUuid, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    if (uuidMatches.Count == 1)
+                    {
+                        dbEntry = uuidMatches[0];
+                    }
+                    else if (uuidMatches.Count > 1)
+                    {
+                        // Multiple mods share the same pak UUID.
+                        // Try stored fileId → stored modId before asking the user.
+                        var stored = fileIdStore?.GetEntry(mod.MetaUuid);
+                        dbEntry = (stored?.NexusFileId > 0
+                                    ? uuidMatches.FirstOrDefault(e => e.NexusFileId == stored.NexusFileId)
+                                    : null)
+                               ?? (stored?.NexusModId > 0
+                                    ? uuidMatches.FirstOrDefault(e => e.NexusModId == stored.NexusModId)
+                                    : null);
+
+                        if (dbEntry == null)
+                        {
+                            // Still ambiguous — flag for user disambiguation.
+                            needsDisambiguation = true;
+                            dbEntry = null;
+                        }
+                    }
+                    else
+                    {
+                        // No UUID match → try fileIdStore modId
+                        var stored = fileIdStore?.GetEntry(mod.MetaUuid);
+                        dbEntry = stored?.NexusModId > 0
+                            ? dbEntries.FirstOrDefault(e => e.NexusModId == stored.NexusModId)
+                            : null;
+
+                        if (dbEntry == null)
+                        {
+                            var distinctModIds = dbEntries.Select(e => e.NexusModId).Distinct().ToList();
+                            if (distinctModIds.Count > 1)
+                            {
+                                // Multiple different mods share this pak filename → user must identify.
+                                needsDisambiguation = true;
+                            }
+                            else
+                            {
+                                // Same mod, different file variants → pick latest fileId.
+                                dbEntry = dbEntries.OrderByDescending(e => e.NexusFileId).FirstOrDefault();
+                            }
+                        }
+                    }
                 }
 
-                // Upgrade to latest fileId for the resolved modId
-                // (same modId may have multiple entries: old archived + new version)
+                resolvedEntry:
+
+                // Ambiguous: create a stub entry so the user can pick the correct mod.
+                if (needsDisambiguation)
+                {
+                    entry = EnsureEntry(entries, mod);
+                    entry.IsAmbiguous                = true;
+                    entry.HasMultipleNexusCandidates = true;
+                    entry.AmbiguousCandidates        = dbEntries
+                        .Select(e => new NexusModCandidate(
+                            e.NexusModId,
+                            e.NexusModName    ?? "",
+                            e.NexusUploadedBy ?? "",
+                            e.NexusFileId,
+                            e.NexusFileName   ?? "",
+                            e.NexusFileVersion ?? ""))
+                        .ToList();
+                    entry.AvailableSources.Add(UpdateSource.NEXUSMODS);
+                    Logger.Info($"Nexus [{mod.MetaModuleName}] ambiguous pak match ({dbEntries.Count} candidates) — needs user disambiguation");
+                }
+
+                // Upgrade to latest fileId for the resolved modId.
+                // When the user has a stored fileId (from a previous download), stay on that
+                // variant's track — only upgrade within the same NexusFileName group.
+                // Fall back to highest fileId only when the stored fileId is no longer in the DB
+                // (archived/removed) or when no prior download record exists.
                 if (dbEntry != null && dbEntries.Count > 1)
                 {
-                    var latest = dbEntries
-                        .Where(e => e.NexusModId == dbEntry.NexusModId)
-                        .OrderByDescending(e => e.NexusFileId)
-                        .FirstOrDefault();
-                    if (latest != null)
-                        dbEntry = latest;
+                    var sameMod = dbEntries.Where(e => e.NexusModId == dbEntry.NexusModId).ToList();
+
+                    var storedFileId = fileIdStore?.GetFileId(mod.MetaUuid);
+                    if (storedFileId > 0)
+                    {
+                        // User has previously downloaded a specific fileId.
+                        // Find the DB entry that matches — if still present, it's the user's variant track.
+                        var storedEntry = sameMod.FirstOrDefault(e => e.NexusFileId == storedFileId);
+                        if (storedEntry != null)
+                        {
+                            // Variant still in DB → stay on this track (don't jump to another variant).
+                            dbEntry = storedEntry;
+                        }
+                        else
+                        {
+                            // Stored fileId no longer in DB (archived/removed) → upgrade to latest.
+                            dbEntry = sameMod.OrderByDescending(e => e.NexusFileId).First();
+                            Logger.Info($"Nexus [{mod.MetaModuleName}] stored fileId {storedFileId} not in DB — upgraded to latest");
+                        }
+                    }
+                    else
+                    {
+                        // No prior download record → pick latest fileId.
+                        var latest = sameMod.OrderByDescending(e => e.NexusFileId).FirstOrDefault();
+                        if (latest != null) dbEntry = latest;
+                    }
                 }
 
                 if (dbEntries.Count == 0)
                     Logger.Debug($"Nexus [{mod.MetaModuleName}] no DB match for pak={mod.PakFileName}");
-                else if (dbEntry == null)
+                else if (dbEntry == null && !needsDisambiguation)
                     Logger.Debug($"Nexus [{mod.MetaModuleName}] ambiguous DB match ({dbEntries.Count} results, uuid mismatch) — skipped");
 
                 if (dbEntry != null)
@@ -195,10 +312,6 @@ public static class UpdateChecker
                             entry.NexusFileName = dbEntry.NexusFileName;
                     }
 
-                    if (dbEntry.MetaUuid == null && !string.IsNullOrEmpty(mod.MetaUuid))
-                        contributions.Add(new ContributeEntry(
-                            dbEntry.PakFileName, mod.MetaUuid, dbEntry.NexusModId, dbEntry.NexusFileId));
-
                 // Sync-required: no stored fileId AND version comparison unreliable
                 // (version inverted, unparseable suffix, etc.)
                 // Flags the entry for the "Sync Recommended" section — one re-download stores
@@ -222,6 +335,9 @@ public static class UpdateChecker
                         Logger.Debug($"Nexus [{mod.MetaModuleName}] sync-required: installed={mod.MetaVersion} db={dbEntry.NexusFileVersion}");
                     }
                 }
+
+                if (entry != null && hasMultipleCandidates)
+                    entry.HasMultipleNexusCandidates = true;
                 }
                 else
                 {
@@ -359,12 +475,14 @@ public static class UpdateChecker
         if (localFileId.HasValue)
         {
             var result = localFileId.Value != dbEntry.NexusFileId;
-            Logger.Debug($"Nexus [{mod.MetaModuleName}] fileId check: local={localFileId.Value} db={dbEntry.NexusFileId} → {(result ? "UPDATE" : "up-to-date")}");
+            if (result)
+                Logger.Debug($"Nexus [{mod.MetaModuleName}] fileId check: local={localFileId.Value} db={dbEntry.NexusFileId} → UPDATE");
             return result;
         }
 
         var verResult = IsNewer(dbEntry.NexusFileVersion, mod.MetaVersion);
-        Logger.Debug($"Nexus [{mod.MetaModuleName}] version fallback: local={mod.MetaVersion} db={dbEntry.NexusFileVersion} → {(verResult ? "UPDATE" : "up-to-date")}");
+        if (verResult)
+            Logger.Debug($"Nexus [{mod.MetaModuleName}] version fallback: local={mod.MetaVersion} db={dbEntry.NexusFileVersion} → UPDATE");
         return verResult;
     }
 
@@ -491,6 +609,37 @@ public static class UpdateChecker
     private static string Normalize(string ver) =>
         ver.TrimStart('v', 'V').Trim();
 
+    // === User link hash validation ===
+
+    /// <summary>
+    /// Returns true if the stored user link is still valid for the current pak file.
+    /// Validity: no hash stored (legacy entry) OR hash matches current pak.
+    /// If the hash mismatches, the link is removed and false is returned so the caller
+    /// can fall through to re-disambiguation.
+    /// </summary>
+    private static bool IsUserLinkHashValid(
+        NexusLinkEntry    link,
+        string?           pakFilePath,
+        UserModLinkStore  store,
+        string            pakFileName)
+    {
+        // No hash stored (legacy entry or hash unavailable) → trust the link as before.
+        if (string.IsNullOrEmpty(link.PakHash) || string.IsNullOrEmpty(pakFilePath))
+            return true;
+
+        var currentHash = UserModLinkStore.ComputeQuickHash(pakFilePath);
+        if (string.IsNullOrEmpty(currentHash))
+            return true; // can't compute → don't invalidate
+
+        if (currentHash == link.PakHash)
+            return true;
+
+        // Hash mismatch: pak file has been replaced externally.
+        Logger.Info($"UpdateChecker: [{pakFileName}] pak hash changed — user link invalidated (was mod {link.ModId}). Re-disambiguating.");
+        store.RemoveLink(pakFileName);
+        return false;
+    }
+
     // === Entry helpers ===
 
     private static ModUpdateEntry EnsureEntry(
@@ -504,6 +653,7 @@ public static class UpdateChecker
                 ModioPublishHandle   = mod.ModioPublishHandle,
                 NexusModId           = mod.NexusModId,
                 UpdateModName        = mod.MetaModuleName,
+                LocalAuthor          = mod.MetaAuthor ?? "",
                 UpdateCurrentVersion = mod.MetaVersion,
                 PakFilePath          = mod.PakFilePath,
             };

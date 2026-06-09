@@ -6,6 +6,7 @@ public class ModUpdateEntry
     public ulong  ModioPublishHandle  { get; set; }
     public int?   NexusModId          { get; set; }
     public string UpdateModName       { get; set; } = "";  // MetaModuleName (local pak)
+    public string LocalAuthor         { get; set; } = "";  // from meta.lsx (MetaAuthor)
     public string NexusModName        { get; set; } = "";  // from Nexus DB
     public string ModioModName        { get; set; } = "";  // from mod.io API
     public string UpdateCurrentVersion { get; set; } = "";
@@ -30,6 +31,23 @@ public class ModUpdateEntry
 
     public bool   CanAutoDownload     { get; set; }
     public bool   RequiresManualCheck { get; set; }
+
+    /// <summary>
+    /// True when multiple Nexus mods share this pak's filename and the correct
+    /// one cannot be determined automatically. The user must pick from
+    /// <see cref="AmbiguousCandidates"/> before a download can proceed.
+    /// </summary>
+    public bool IsAmbiguous { get; set; }
+
+    /// <summary>Candidate mods presented to the user for manual disambiguation (first-time only).</summary>
+    public List<NexusModCandidate> AmbiguousCandidates { get; set; } = [];
+
+    /// <summary>
+    /// True when this pak filename matched multiple distinct Nexus mod IDs in the DB.
+    /// Used to show a persistent "Change" button so users can correct a stored identification.
+    /// Candidates are re-queried fresh from the DB on demand — not stored here.
+    /// </summary>
+    public bool HasMultipleNexusCandidates { get; set; }
 
     /// <summary>
     /// True when version comparison is unreliable (no stored fileId + version scheme mismatch).

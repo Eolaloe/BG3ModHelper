@@ -22,5 +22,90 @@
             <Setter Property="FontWeight"    Value="SemiBold"/>
             <Setter Property="TextAlignment" Value="Center"/>
         </Style>
+
+        <!-- ── Action button styles: shared across update windows ── -->
+        <Style x:Key="PrimaryActionButton" TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Background"          Value="#0078d4"/>
+            <Setter Property="Foreground"          Value="White"/>
+            <Setter Property="BorderThickness"     Value="0"/>
+            <Setter Property="Padding"             Value="12,4"/>
+            <Setter Property="MinWidth"            Value="90"/>
+            <Setter Property="Height"              Value="26"/>
+            <Setter Property="Cursor"              Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#106ebe"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#cccccc"/>
+                                <Setter Property="Foreground" Value="#888888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- SecondaryActionButton intentionally NOT in App.xaml:
+             StyleKeyConverter falls back to default WPF button style when key not found.
+             This preserves the original appearance of Identify / Open Page action buttons. -->
+
+        <Style x:Key="RegisterActionButton" TargetType="Button" BasedOn="{StaticResource PrimaryActionButton}">
+            <Setter Property="Background" Value="#888888"/>
+        </Style>
+
+        <Style x:Key="StopActionButton" TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Background"          Value="#c42b2b"/>
+            <Setter Property="Foreground"          Value="White"/>
+            <Setter Property="BorderThickness"     Value="0"/>
+            <Setter Property="Padding"             Value="12,4"/>
+            <Setter Property="MinWidth"            Value="90"/>
+            <Setter Property="Height"              Value="26"/>
+            <Setter Property="Cursor"              Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#a32020"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#cccccc"/>
+                                <Setter Property="Foreground" Value="#888888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModNameButton" TargetType="Button">
+            <Setter Property="Background"              Value="Transparent"/>
+            <Setter Property="BorderThickness"         Value="0"/>
+            <Setter Property="Padding"                 Value="0"/>
+            <Setter Property="Cursor"                  Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="Transparent" ToolTip="{TemplateBinding ToolTip}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>

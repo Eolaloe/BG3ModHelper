@@ -74,10 +74,11 @@ public class StyleKeyConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is string key && Application.Current.Resources[key] is Style style)
+        if (value is string key &&
+            Application.Current.Resources.Contains(key) &&
+            Application.Current.Resources[key] is Style style)
             return style;
-        return Application.Current.Resources["PrimaryActionButton"] as Style
-               ?? new Style(typeof(System.Windows.Controls.Button));
+        return new Style(typeof(System.Windows.Controls.Button)); // key not found → default WPF button look
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

@@ -9,7 +9,7 @@
 		<AssemblyName>BG3ModHelper</AssemblyName>
 		<RootNamespace>BG3ModHelper</RootNamespace>
 		<Product>BG3 Mod Helper</Product>
-		<Version>1.0.5.2</Version>
+		<Version>1.0.6</Version>
 		<!-- LSLib.dll is x64-only. Match the target platform to avoid MSB3270. -->
 		<PlatformTarget>x64</PlatformTarget>
 		<ApplicationIcon>Assets\app.ico</ApplicationIcon>

@@ -128,8 +128,34 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Last check:" FontWeight="SemiBold" Foreground="#666666" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="{Binding LastCheckDisplay}"
-                               VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding LastCheckDisplay}" VerticalAlignment="Center"/>
+                        <TextBlock Text="  ·  " Foreground="#cccccc" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding NexusRateLimitText}"
+                                   Foreground="{Binding NexusRateLimitColor}"
+                                   FontSize="11" VerticalAlignment="Center"
+                                   ToolTip="Nexus API calls remaining this hour (h) and today (d)&#x0a;Limit: 20,000/day · recovers 500/hour after exhaustion"/>
+                        <Button Command="{Binding CheckRateLimitsCommand}"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="4,0,0,0" Cursor="Hand" FontSize="11"
+                                ToolTip="Refresh Nexus API rate limit (uses 1 call)"
+                                VerticalAlignment="Center">
+                            <TextBlock FontSize="13">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text"       Value="↻"/>
+                                        <Setter Property="Foreground" Value="#aaaaaa"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RateLimitChecking}" Value="True">
+                                                <Setter Property="Text"       Value="…"/>
+                                                <Setter Property="Foreground" Value="#888888"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </StackPanel>
 

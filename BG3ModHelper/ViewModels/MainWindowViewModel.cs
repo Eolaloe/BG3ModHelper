@@ -33,6 +33,52 @@ public class MainWindowViewModel : ViewModelBase
     private readonly UserModLinkStore     _userLinks    = new();
     private          FolderWatcherService? _folderWatcher;
 
+    // === Nexus API rate limit display ===
+    private int _nexusHourlyRemaining = NexusApi.LastKnownHourlyRemaining;
+    private int _nexusDailyRemaining  = NexusApi.LastKnownDailyRemaining;
+
+    public string NexusRateLimitText =>
+        _nexusHourlyRemaining < 0 ? "API —" :
+        _nexusDailyRemaining == 0
+            ? $"API  {_nexusHourlyRemaining:N0}/h  (daily exhausted)"
+            : $"API  {_nexusHourlyRemaining:N0}h · {_nexusDailyRemaining:N0}d";
+
+    public string NexusRateLimitColor =>
+        (_nexusHourlyRemaining >= 0 && _nexusHourlyRemaining <= 10) ||
+        (_nexusDailyRemaining  >= 0 && _nexusDailyRemaining  <= 100) ? "#c42b2b" :
+        (_nexusHourlyRemaining >= 0 && _nexusHourlyRemaining <= 50)  ||
+        (_nexusDailyRemaining  >= 0 && _nexusDailyRemaining  <= 500) ? "#e07000" :
+        "#888888";
+
+    private bool _rateLimitChecking;
+    public bool RateLimitChecking
+    {
+        get => _rateLimitChecking;
+        private set { _rateLimitChecking = value; OnPropertyChanged(); }
+    }
+
+    public RelayCommand CheckRateLimitsCommand { get; private set; } = null!;
+
+    private void OnNexusRateLimitsUpdated(int hourly, int daily)
+    {
+        Application.Current?.Dispatcher?.BeginInvoke(() =>
+        {
+            _nexusHourlyRemaining = hourly;
+            _nexusDailyRemaining  = daily;
+            OnPropertyChanged(nameof(NexusRateLimitText));
+            OnPropertyChanged(nameof(NexusRateLimitColor));
+        });
+    }
+
+    private async void ExecuteCheckRateLimits()
+    {
+        if (string.IsNullOrEmpty(_settings.NexusAPIKey) || RateLimitChecking) return;
+        RateLimitChecking = true;
+        try   { await new NexusApi(_settings.NexusAPIKey).ValidateUserAsync(); }
+        catch { }
+        finally { RateLimitChecking = false; }
+    }
+
     public MainWindowViewModel(Window ownerWindow)
     {
         _ownerWindow = ownerWindow;
@@ -51,6 +97,10 @@ public class MainWindowViewModel : ViewModelBase
         EnterCompactCommand      = new RelayCommand(EnterCompact);
         ExitCompactCommand       = new RelayCommand(ExitCompact);
         ExitAppCommand           = new RelayCommand(() => System.Windows.Application.Current.Shutdown());
+        CheckRateLimitsCommand   = new RelayCommand(ExecuteCheckRateLimits,
+            () => !string.IsNullOrEmpty(_settings.NexusAPIKey) && !RateLimitChecking);
+
+        NexusApi.RateLimitsUpdated += OnNexusRateLimitsUpdated;
 
         RecentActivities = [];
         AddActivity("Application started");
@@ -273,6 +323,10 @@ public class MainWindowViewModel : ViewModelBase
         await Task.WhenAll(RefreshModsAsync(), _nexusIdDb.InitAsync());
         // Second pass: fill in NexusModIds that the scan missed because DB wasn't ready yet
         ApplyNexusIdsFromDb();
+
+        // Fire-and-forget: fetch real rate limit counts on startup (1 call)
+        if (!string.IsNullOrEmpty(_settings.NexusAPIKey))
+            _ = new NexusApi(_settings.NexusAPIKey).ValidateUserAsync();
     }
 
     /// <summary>
@@ -515,7 +569,9 @@ public class MainWindowViewModel : ViewModelBase
                 hasNexus ? new NexusApi(_settings.NexusAPIKey) : null,
                 _fileIdStore,
                 _historyStore,
-                reloadFunc);
+                reloadFunc,
+                _userLinks,
+                _nexusIdDb);
 
             notificationVm.NexusMappingAdded += (uuid, modId, fileId) =>
             {

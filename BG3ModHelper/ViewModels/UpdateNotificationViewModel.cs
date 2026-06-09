@@ -16,6 +16,8 @@ public class UpdateNotificationViewModel : ViewModelBase
     private readonly NexusApi? _nexusApi;
     private readonly ModFileIdStore? _fileIdStore;
     private readonly DownloadHistoryStore? _historyStore;
+    private readonly UserModLinkStore?    _userLinkStore;
+    private readonly NexusIdDatabase?    _nexusDb;
     private readonly Func<Task<List<ModUpdateEntry>>>? _reloadFunc;
 
     public UpdateNotificationViewModel(
@@ -27,7 +29,9 @@ public class UpdateNotificationViewModel : ViewModelBase
         NexusApi? nexusApi                = null,
         ModFileIdStore? fileIdStore       = null,
         DownloadHistoryStore? historyStore = null,
-        Func<Task<List<ModUpdateEntry>>>? reloadFunc = null)
+        Func<Task<List<ModUpdateEntry>>>? reloadFunc = null,
+        UserModLinkStore? userLinkStore   = null,
+        NexusIdDatabase? nexusDb          = null)
     {
         _nexusIsPremium = nexusIsPremium;
         _modsFolder     = modsFolder;
@@ -36,15 +40,18 @@ public class UpdateNotificationViewModel : ViewModelBase
         _nexusApi       = nexusApi;
         _fileIdStore    = fileIdStore;
         _historyStore   = historyStore;
+        _userLinkStore  = userLinkStore;
+        _nexusDb        = nexusDb;
         _reloadFunc     = reloadFunc;
 
         var allVms = updates.Select(u =>
         {
-            var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore, historyStore);
-            vm.DownloadRequested += OnDownloadRequested;
-            vm.PageOpenRequested += OnPageOpenRequested;
-            vm.NexusRegistered   += OnNexusRegistered;
-            vm.CancelRequested   += OnCancelRequested;
+            var vm = new UpdateEntryViewModel(u, nexusIsPremium, modsFolder, backupEnabled, modioApi, nexusApi, fileIdStore, historyStore, userLinkStore, nexusDb);
+            vm.DownloadRequested       += OnDownloadRequested;
+            vm.PageOpenRequested       += OnPageOpenRequested;
+            vm.NexusRegistered         += OnNexusRegistered;
+            vm.CancelRequested         += OnCancelRequested;
+            vm.DisambiguationRequested += OnDisambiguationRequested;
             return vm;
         }).ToList();
 
@@ -81,19 +88,24 @@ public class UpdateNotificationViewModel : ViewModelBase
             if (view is System.ComponentModel.ICollectionViewLiveShaping lv)
             {
                 lv.IsLiveSorting = true;
+                lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.IsAmbiguous));
                 lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortPreserveOrder));
                 lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortName));
                 lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.SortSourceOrder));
+                lv.LiveSortingProperties.Add(nameof(UpdateEntryViewModel.LocalAuthor));
             }
         }
 
         SortActiveByNameCommand   = new RelayCommand(() => ToggleSortActive(SortCol.Name));
         SortActiveBySourceCommand = new RelayCommand(() => ToggleSortActive(SortCol.Source));
         SortActiveByLockCommand   = new RelayCommand(() => ToggleSortActive(SortCol.Lock));
+        SortActiveByAuthorCommand = new RelayCommand(() => ToggleSortActive(SortCol.Author));
         SortInactiveByNameCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Name));
         SortInactiveBySourceCommand = new RelayCommand(() => ToggleSortInactive(SortCol.Source));
         SortInactiveByLockCommand   = new RelayCommand(() => ToggleSortInactive(SortCol.Lock));
-        SortSyncByNameCommand = new RelayCommand(() => ToggleSortSync(SortCol.Name));
+        SortInactiveByAuthorCommand = new RelayCommand(() => ToggleSortInactive(SortCol.Author));
+        SortSyncByNameCommand   = new RelayCommand(() => ToggleSortSync(SortCol.Name));
+        SortSyncByAuthorCommand = new RelayCommand(() => ToggleSortSync(SortCol.Author));
         ApplySort();
 
         SelectAllActiveCommand   = new RelayCommand(() => SetSectionSelected(active: true,  selected: true));
@@ -110,16 +122,118 @@ public class UpdateNotificationViewModel : ViewModelBase
                   Entries.Any(e => e.IsSelected && e.IsActionEnabled &&
                                    (e.CanAutoDownload ||
                                     (!e.CanAutoDownload && e.HasNexus && !e.IsNexusUnregistered))));
-        CloseCommand        = new RelayCommand(() => CloseRequested?.Invoke());
-        RefreshCommand      = new RelayCommand(ExecuteRefresh, () => !IsBusy);
-        CloseWebViewCommand = new RelayCommand(CloseWebViewPanel);
-        SkipCommand         = new RelayCommand(ExecuteSkip);
+        StopAllCommand              = new RelayCommand(ExecuteStopAll, () => IsBusy);
+        CloseCommand                = new RelayCommand(() => CloseRequested?.Invoke());
+        RefreshCommand              = new RelayCommand(ExecuteRefresh, () => !IsBusy);
+        CloseWebViewCommand         = new RelayCommand(CloseWebViewPanel);
+        SkipCommand                 = new RelayCommand(ExecuteSkip);
+        CheckRateLimitsCommand      = new RelayCommand(ExecuteCheckRateLimits, () => _nexusApi != null && !RateLimitChecking);
+        ShowIdentifiedListCommand   = new RelayCommand(
+            () => ShowIdentifiedListRequested?.Invoke());
 
         // subscribe for the lifetime of the window
         UnifiedDownloadQueue.Instance.OnNxmCompleted += OnNxmCompleted;
         UnifiedDownloadQueue.Instance.OnNxmProgress  += OnNxmProgress;
+        NexusApi.RateLimitsUpdated += OnNexusRateLimitsUpdated;
 
         UpdateSummary();
+    }
+
+    // === Identified mods list ===
+
+    public event Action? ShowIdentifiedListRequested;
+    public RelayCommand ShowIdentifiedListCommand { get; }
+
+    public IReadOnlyList<UpdateEntryViewModel> IdentifiedEntries =>
+        Entries.Where(e => e.ShowChangeButton).ToList();
+
+    public bool   HasIdentifiedEntries    => Entries.Any(e => e.ShowChangeButton);
+    public string IdentifiedCountLabel    => $"Identified  ({Entries.Count(e => e.ShowChangeButton)})";
+
+    /// <summary>
+    /// Mods that are in UserModLinkStore (manually identified) but do NOT appear
+    /// in the current update-check list (e.g. already up to date or not installed this session).
+    /// Shown in the second section of the Identified Mods popup.
+    /// </summary>
+    public IReadOnlyList<IdentifiedLinkEntryViewModel> LinkedOnlyEntries
+    {
+        get
+        {
+            if (_userLinkStore == null) return Array.Empty<IdentifiedLinkEntryViewModel>();
+
+            // Pak base names (no extension, lowercase) already in the update list
+            var inUpdateList = Entries
+                .Where(e => !string.IsNullOrEmpty(e.PakFilePath))
+                .Select(e => System.IO.Path.GetFileNameWithoutExtension(e.PakFilePath)
+                                            .ToLowerInvariant())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var result = new List<IdentifiedLinkEntryViewModel>();
+            foreach (var (pakName, link) in _userLinkStore.GetAllNexusLinks())
+            {
+                if (inUpdateList.Contains(pakName)) continue;
+
+                string? modName = null, author = null;
+                if (_nexusDb != null)
+                {
+                    var dbEntries = _nexusDb.LookupByPakFileName(pakName);
+                    var match = dbEntries.FirstOrDefault(e => e.NexusModId == link.ModId)
+                                ?? dbEntries.FirstOrDefault();
+                    if (match != null) { modName = match.NexusModName; author = match.NexusUploadedBy; }
+                }
+
+                result.Add(new IdentifiedLinkEntryViewModel(pakName, link.ModId, modName, author, _userLinkStore, _nexusDb));
+            }
+            return result;
+        }
+    }
+
+    // === Nexus API rate limit display ===
+
+    private int _nexusHourlyRemaining = NexusApi.LastKnownHourlyRemaining;
+    private int _nexusDailyRemaining  = NexusApi.LastKnownDailyRemaining;
+
+    public bool   HasNexusRateLimitData => _nexusHourlyRemaining >= 0;
+    public string NexusRateLimitText    =>
+        _nexusHourlyRemaining < 0 ? "API —" :
+        _nexusDailyRemaining == 0
+            ? $"API  {_nexusHourlyRemaining:N0}/h  (daily exhausted)"
+            : $"API  {_nexusHourlyRemaining:N0}h · {_nexusDailyRemaining:N0}d";
+    public string NexusRateLimitColor   =>
+        (_nexusHourlyRemaining >= 0 && _nexusHourlyRemaining <= 10) ||
+        (_nexusDailyRemaining  >= 0 && _nexusDailyRemaining  <= 100) ? "#c42b2b" :
+        (_nexusHourlyRemaining >= 0 && _nexusHourlyRemaining <= 50)  ||
+        (_nexusDailyRemaining  >= 0 && _nexusDailyRemaining  <= 500) ? "#e07000" :
+        "#888888";
+
+    private void OnNexusRateLimitsUpdated(int hourly, int daily)
+    {
+        Application.Current?.Dispatcher?.BeginInvoke(() =>
+        {
+            _nexusHourlyRemaining = hourly;
+            _nexusDailyRemaining  = daily;
+            OnPropertyChanged(nameof(NexusRateLimitText));
+            OnPropertyChanged(nameof(NexusRateLimitColor));
+            OnPropertyChanged(nameof(HasNexusRateLimitData));
+        });
+    }
+
+    private bool _rateLimitChecking;
+    public bool RateLimitChecking
+    {
+        get => _rateLimitChecking;
+        private set { _rateLimitChecking = value; OnPropertyChanged(); }
+    }
+
+    public RelayCommand CheckRateLimitsCommand { get; private set; } = null!;
+
+    private async void ExecuteCheckRateLimits()
+    {
+        if (_nexusApi == null || RateLimitChecking) return;
+        RateLimitChecking = true;
+        try   { await _nexusApi.ValidateUserAsync(); }
+        catch { /* ignore — UpdateRateLimits fires even on error responses */ }
+        finally { RateLimitChecking = false; }
     }
 
     // === Properties ===
@@ -236,6 +350,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         {
             SetField(ref _isBusy, value);
             DownloadSelectedCommand.RaiseCanExecuteChanged();
+            StopAllCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -256,6 +371,12 @@ public class UpdateNotificationViewModel : ViewModelBase
             DownloadSelectedCommand.RaiseCanExecuteChanged();
         }
     }
+
+    /// <summary>
+    /// Opens the side WebView panel from outside the ViewModel (e.g. report flow in code-behind).
+    /// Mirrors the internal path so IsWebViewPanelOpen stays consistent with the close button.
+    /// </summary>
+    public void RequestOpenWebViewPanel() => IsWebViewPanelOpen = true;
 
     private string _webViewCurrentUrl = "";
     public string WebViewCurrentUrl
@@ -287,6 +408,7 @@ public class UpdateNotificationViewModel : ViewModelBase
     public RelayCommand SelectAllCommand           { get; }
     public RelayCommand DeselectAllCommand         { get; }
     public RelayCommand DownloadSelectedCommand    { get; }
+    public RelayCommand StopAllCommand             { get; }
     public RelayCommand CloseCommand               { get; }
     public RelayCommand RefreshCommand             { get; }
     public RelayCommand CloseWebViewCommand        { get; }
@@ -295,10 +417,14 @@ public class UpdateNotificationViewModel : ViewModelBase
     public event Action?                       CloseRequested;
     public event Action?                       LoginRequired;
     public event Action<string, int, int>?     NexusMappingAdded;
+    public event Action<UpdateEntryViewModel, IReadOnlyList<NexusModCandidate>>? DisambiguationRequested;
+
+    private void OnDisambiguationRequested(UpdateEntryViewModel vm, IReadOnlyList<NexusModCandidate> candidates)
+        => DisambiguationRequested?.Invoke(vm, candidates);
 
     // === Sort ===
 
-    private enum SortCol { Name, Source, Lock }
+    private enum SortCol { Name, Source, Lock, Author }
 
     // Active section sort state (independent from Inactive)
     private SortCol _activeSortColumn    = SortCol.Name;
@@ -315,18 +441,21 @@ public class UpdateNotificationViewModel : ViewModelBase
     public ICollectionView EntriesView { get; }
 
     // ── Active header texts ──────────────────────────────────────────────────
-    public string ActiveNameSortHeader   => _activeSortColumn == SortCol.Name   ? (_activeSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
-    public string ActiveSourceSortHeader => _activeSortColumn == SortCol.Source ? (_activeSortAscending ? "Source ↑" : "Source ↓") : "Source ⇅";
+    public string ActiveNameSortHeader   => _activeSortColumn == SortCol.Name   ? (_activeSortAscending ? "Name ↑"     : "Name ↓")     : "Name ⇅";
+    public string ActiveAuthorSortHeader => _activeSortColumn == SortCol.Author ? (_activeSortAscending ? "Author ↑"   : "Author ↓")   : "Author ⇅";
+    public string ActiveSourceSortHeader => _activeSortColumn == SortCol.Source ? (_activeSortAscending ? "Source ↑"   : "Source ↓")   : "Source ⇅";
     public string ActiveLockSortHeader   => _activeSortColumn == SortCol.Lock   ? (_activeSortAscending ? "↑" : "↓") : "⇅";
 
     // ── Inactive header texts ────────────────────────────────────────────────
     public string InactiveNameSortHeader   => _inactiveSortColumn == SortCol.Name   ? (_inactiveSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
+    public string InactiveAuthorSortHeader => _inactiveSortColumn == SortCol.Author ? (_inactiveSortAscending ? "Author ↑" : "Author ↓") : "Author ⇅";
     public string InactiveSourceSortHeader => _inactiveSortColumn == SortCol.Source ? (_inactiveSortAscending ? "Source ↑" : "Source ↓") : "Source ⇅";
     public string InactiveLockSortHeader   => _inactiveSortColumn == SortCol.Lock   ? (_inactiveSortAscending ? "↑" : "↓") : "⇅";
 
     // ── Sync header texts ─────────────────────────────────────────────────────
-    public string SyncNameSortHeader => _syncSortColumn == SortCol.Name ? (_syncSortAscending ? "Name ↑" : "Name ↓") : "Name ⇅";
-    public string SyncLockSortHeader => _syncSortColumn == SortCol.Lock ? (_syncSortAscending ? "↑" : "↓") : "⇅";
+    public string SyncNameSortHeader   => _syncSortColumn == SortCol.Name   ? (_syncSortAscending ? "Name ↑"   : "Name ↓")   : "Name ⇅";
+    public string SyncAuthorSortHeader => _syncSortColumn == SortCol.Author ? (_syncSortAscending ? "Author ↑" : "Author ↓") : "Author ⇅";
+    public string SyncLockSortHeader   => _syncSortColumn == SortCol.Lock   ? (_syncSortAscending ? "↑" : "↓") : "⇅";
 
     // Keep old names as pass-through so any lingering bindings don't crash
     public string NameSortHeader   => ActiveNameSortHeader;
@@ -334,16 +463,19 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // ── Active commands ──────────────────────────────────────────────────────
     public RelayCommand SortActiveByNameCommand   { get; }
+    public RelayCommand SortActiveByAuthorCommand { get; }
     public RelayCommand SortActiveBySourceCommand { get; }
     public RelayCommand SortActiveByLockCommand   { get; }
 
     // ── Inactive commands ────────────────────────────────────────────────────
     public RelayCommand SortInactiveByNameCommand   { get; }
+    public RelayCommand SortInactiveByAuthorCommand { get; }
     public RelayCommand SortInactiveBySourceCommand { get; }
     public RelayCommand SortInactiveByLockCommand   { get; }
 
     // ── Sync commands ─────────────────────────────────────────────────────────
-    public RelayCommand SortSyncByNameCommand { get; }
+    public RelayCommand SortSyncByNameCommand   { get; }
+    public RelayCommand SortSyncByAuthorCommand { get; }
     public RelayCommand SelectAllSyncCommand   { get; }
     public RelayCommand DeselectAllSyncCommand { get; }
 
@@ -357,6 +489,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         else { _activeSortColumn = col; _activeSortAscending = true; }
         ApplySortToView(ActiveEntriesView, _activeSortColumn, _activeSortAscending);
         OnPropertyChanged(nameof(ActiveNameSortHeader));
+        OnPropertyChanged(nameof(ActiveAuthorSortHeader));
         OnPropertyChanged(nameof(ActiveSourceSortHeader));
         OnPropertyChanged(nameof(ActiveLockSortHeader));
     }
@@ -367,6 +500,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         else { _inactiveSortColumn = col; _inactiveSortAscending = true; }
         ApplySortToView(InactiveEntriesView, _inactiveSortColumn, _inactiveSortAscending);
         OnPropertyChanged(nameof(InactiveNameSortHeader));
+        OnPropertyChanged(nameof(InactiveAuthorSortHeader));
         OnPropertyChanged(nameof(InactiveSourceSortHeader));
         OnPropertyChanged(nameof(InactiveLockSortHeader));
     }
@@ -377,6 +511,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         else { _syncSortColumn = col; _syncSortAscending = true; }
         ApplySortToView(SyncEntriesView, _syncSortColumn, _syncSortAscending);
         OnPropertyChanged(nameof(SyncNameSortHeader));
+        OnPropertyChanged(nameof(SyncAuthorSortHeader));
         OnPropertyChanged(nameof(SyncLockSortHeader));
     }
 
@@ -399,10 +534,16 @@ public class UpdateNotificationViewModel : ViewModelBase
     {
         var dir = ascending ? ListSortDirection.Ascending : ListSortDirection.Descending;
         view.SortDescriptions.Clear();
+        // Ambiguous entries always float to the top regardless of sort column.
+        view.SortDescriptions.Add(new SortDescription("IsAmbiguous", ListSortDirection.Descending));
         switch (col)
         {
             case SortCol.Name:
                 view.SortDescriptions.Add(new SortDescription("SortName", dir));
+                break;
+            case SortCol.Author:
+                view.SortDescriptions.Add(new SortDescription("LocalAuthor", dir));
+                view.SortDescriptions.Add(new SortDescription("SortName", ListSortDirection.Ascending));
                 break;
             case SortCol.Source:
                 view.SortDescriptions.Add(new SortDescription("SortSourceOrder", dir));
@@ -456,7 +597,9 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     // === Cancel tracking ===
     // Items currently enqueued in the active batch (set during ExecuteDownloadSelected)
-    private List<UpdateEntryViewModel> _activeAutoItems = [];
+    private List<UpdateEntryViewModel>  _activeAutoItems = [];
+    // Batch-level CTS: cancelled when the user confirms "cancel all" → stops all queued + in-progress items
+    private CancellationTokenSource?    _batchCts;
 
     // === Refresh ===
 
@@ -501,15 +644,36 @@ public class UpdateNotificationViewModel : ViewModelBase
                 e.IsSelected = selected;
     }
 
+    private void ExecuteStopAll()
+    {
+        // Cancel batch CTS — linked token in ExecuteDownloadAsync fires OperationCanceledException on active download
+        _batchCts?.Cancel();
+        // Immediately update visual state for items that haven't started yet
+        foreach (var item in _activeAutoItems)
+        {
+            if (item.Status == UpdateStatus.Pending)
+            {
+                item.Status     = UpdateStatus.Skipped;
+                item.StatusText = "Cancelled";
+            }
+        }
+    }
+
     private async void ExecuteDownloadSelected()
     {
         try
         {
-            var autoItems = Entries
+            // Build in the order currently shown in the UI (respects column sorting),
+            // not in the original insertion order of Entries.
+            var ordered = ActiveEntriesView  .OfType<UpdateEntryViewModel>()
+                   .Concat(InactiveEntriesView.OfType<UpdateEntryViewModel>())
+                   .Concat(SyncEntriesView    .OfType<UpdateEntryViewModel>());
+
+            var autoItems = ordered
                 .Where(e => e.IsSelected && e.CanAutoDownload && e.IsActionEnabled)
                 .ToList();
 
-            var freeItems = Entries
+            var freeItems = ordered
                 .Where(e => e.IsSelected && e.IsActionEnabled &&
                             !e.CanAutoDownload && e.HasNexus && !e.IsNexusUnregistered)
                 .ToList();
@@ -519,11 +683,13 @@ public class UpdateNotificationViewModel : ViewModelBase
             // Auto-download items (mod.io + Nexus Premium) — routed through UnifiedDownloadQueue
             if (autoItems.Count > 0)
             {
-                IsBusy          = true;
+                IsBusy           = true;
                 _activeAutoItems = autoItems;
-                var total       = autoItems.Count;
-                var done        = 0;
-                var completions = autoItems.Select(_ => new TaskCompletionSource()).ToArray();
+                _batchCts        = new CancellationTokenSource();
+                var batchCt      = _batchCts.Token;
+                var total        = autoItems.Count;
+                var done         = 0;
+                var completions  = autoItems.Select(_ => new TaskCompletionSource()).ToArray();
 
                 for (int i = 0; i < autoItems.Count; i++)
                 {
@@ -540,8 +706,16 @@ public class UpdateNotificationViewModel : ViewModelBase
                                 () => BusyText = $"({n}/{total}) {entry.ModName}");
                             try
                             {
+                                // If batch was cancelled before this item started, skip it silently
+                                if (batchCt.IsCancellationRequested)
+                                {
+                                    entry.Status     = UpdateStatus.Skipped;
+                                    entry.StatusText = "Cancelled";
+                                    return;
+                                }
                                 await entry.ExecuteDownloadAsync(
-                                    onProgress: p => Services.UnifiedDownloadQueue.Instance.ReportProgress(p));
+                                    onProgress: p => Services.UnifiedDownloadQueue.Instance.ReportProgress(p),
+                                    batchCt:    batchCt);
                             }
                             finally { tcs.TrySetResult(); }
                         }
@@ -550,6 +724,8 @@ public class UpdateNotificationViewModel : ViewModelBase
 
                 await Task.WhenAll(completions.Select(t => t.Task));
                 _activeAutoItems = [];
+                _batchCts?.Dispose();
+                _batchCts = null;
                 IsBusy   = false;
                 BusyText = "";
                 UpdateSummary();
@@ -689,6 +865,7 @@ public class UpdateNotificationViewModel : ViewModelBase
         UnifiedDownloadQueue.Instance.OnNxmQueued    -= OnNxmQueued;
         UnifiedDownloadQueue.Instance.OnNxmCompleted -= OnNxmCompleted;
         UnifiedDownloadQueue.Instance.OnNxmProgress  -= OnNxmProgress;
+        NexusApi.RateLimitsUpdated -= OnNexusRateLimitsUpdated;
     }
 
     private void OnCancelRequested(UpdateEntryViewModel entry)
@@ -714,6 +891,8 @@ public class UpdateNotificationViewModel : ViewModelBase
 
         if (result == MessageBoxResult.Yes)
         {
+            // Cancel the batch CTS — stops any in-progress download AND prevents queued items from starting
+            _batchCts?.Cancel();
             foreach (var item in pendingItems)
             {
                 item.Status     = UpdateStatus.Skipped;
@@ -874,23 +1053,26 @@ public class UpdateNotificationViewModel : ViewModelBase
 
     private void UpdateSummary()
     {
-        var updateTotal = Entries.Count(e => !e.IsSyncRequired);
-        var syncCount   = SyncEntries.Count;
-        var autoCount   = Entries.Count(e => !e.IsSyncRequired && e.CanAutoDownload && e.IsActionEnabled);
-        var doneCount   = Entries.Count(e => e.Status == UpdateStatus.Updated);
-        var manualCount = Entries.Count(e => !e.IsSyncRequired && !e.CanAutoDownload && !e.IsNexusUnregistered);
-        var unregCount  = Entries.Count(e => e.IsNexusUnregistered);
+        // Identify entries (ambiguous Nexus pak) are not update targets — counted separately
+        var identifyCount = Entries.Count(e => !e.IsSyncRequired && e.IsAmbiguous);
+        var updateTotal   = Entries.Count(e => !e.IsSyncRequired && !e.IsAmbiguous);
+        var syncCount     = SyncEntries.Count;
+        var autoCount     = Entries.Count(e => !e.IsSyncRequired && !e.IsAmbiguous && e.CanAutoDownload && e.IsActionEnabled);
+        var doneCount     = Entries.Count(e => e.Status == UpdateStatus.Updated);
+        var manualCount   = Entries.Count(e => !e.IsSyncRequired && !e.IsAmbiguous && !e.CanAutoDownload && !e.IsNexusUnregistered);
+        var unregCount    = Entries.Count(e => e.IsNexusUnregistered);
 
         TitleText = updateTotal > 0
             ? $"{updateTotal} Updates Available"
             : syncCount > 0 ? "Sync Recommended" : "All Up To Date";
 
         var parts = new List<string>();
-        if (doneCount   > 0) parts.Add($"{doneCount} done");
-        if (autoCount   > 0) parts.Add($"{autoCount} auto-download");
-        if (manualCount > 0) parts.Add($"{manualCount} manual");
-        if (unregCount  > 0) parts.Add($"{unregCount} Nexus unlinked");
-        if (syncCount   > 0) parts.Add($"{syncCount} sync-needed");
+        if (doneCount     > 0) parts.Add($"{doneCount} done");
+        if (autoCount     > 0) parts.Add($"{autoCount} auto-download");
+        if (manualCount   > 0) parts.Add($"{manualCount} manual");
+        if (unregCount    > 0) parts.Add($"{unregCount} Nexus unlinked");
+        if (syncCount     > 0) parts.Add($"{syncCount} sync-needed");
+        if (identifyCount > 0) parts.Add($"{identifyCount} identify");
         SummaryText = string.Join(" · ", parts);
     }
 }

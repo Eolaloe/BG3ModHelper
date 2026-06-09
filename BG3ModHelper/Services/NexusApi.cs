@@ -29,6 +29,16 @@ public class NexusApi(string apiKey)
     public int HourlyRemaining { get; private set; } = 100;
     public int DailyRemaining  { get; private set; } = 2500;
 
+    /// <summary>
+    /// Fired (on any thread) whenever rate limit counters are updated from response headers.
+    /// Args: (hourlyRemaining, dailyRemaining).
+    /// </summary>
+    public static event Action<int, int>? RateLimitsUpdated;
+
+    /// <summary>Last known rate limit values across all NexusApi instances. -1 = never received.</summary>
+    public static int LastKnownHourlyRemaining { get; private set; } = -1;
+    public static int LastKnownDailyRemaining  { get; private set; } = -1;
+
     /// <summary>Last error message from the API response body, if any.</summary>
     public string? LastError { get; private set; }
 
@@ -458,23 +468,35 @@ public class NexusApi(string apiKey)
     {
         var prevHourly = HourlyRemaining;
         var prevDaily  = DailyRemaining;
+        var hasHeaders = false;
 
         if (response.Headers.TryGetValues("X-RL-Hourly-Remaining", out var hourly) &&
             int.TryParse(hourly.FirstOrDefault(), out var h))
         {
             HourlyRemaining = h;
+            hasHeaders = true;
         }
 
         if (response.Headers.TryGetValues("X-RL-Daily-Remaining", out var daily) &&
             int.TryParse(daily.FirstOrDefault(), out var d))
         {
             DailyRemaining = d;
+            hasHeaders = true;
         }
 
-        // Only log on change — prevents spam during parallel calls
+        // Log only on change — prevents spam during parallel calls
         if (HourlyRemaining <= 5 && HourlyRemaining != prevHourly)
             Logger.Warn($"NexusApi: hourly rate limit low ({HourlyRemaining} remaining)");
         if (DailyRemaining <= 10 && DailyRemaining != prevDaily)
             Logger.Warn($"NexusApi: daily rate limit low ({DailyRemaining} remaining)");
+
+        // Fire whenever the server actually returned rate-limit headers,
+        // regardless of whether the value changed — so every API call updates the display.
+        if (hasHeaders)
+        {
+            LastKnownHourlyRemaining = HourlyRemaining;
+            LastKnownDailyRemaining  = DailyRemaining;
+            RateLimitsUpdated?.Invoke(HourlyRemaining, DailyRemaining);
+        }
     }
 }
