@@ -16,7 +16,7 @@ public class AppSettings
     // === Folder Watcher ===
 
     /// <summary>Whether download folder auto-install watching is enabled.</summary>
-    public bool   FolderWatchEnabled      { get; set; } = false;
+    public bool   FolderWatchEnabled      { get; set; } = true;
 
     /// <summary>Path to watch. Empty = OS default Downloads folder.</summary>
     public string WatchedDownloadFolder   { get; set; } = "";
@@ -48,6 +48,12 @@ public class AppSettings
     /// </summary>
     public string LogMinLevel { get; set; } = "Info";
 
+    /// <summary>
+    /// True once the recommended-setup prompt has been shown (any response).
+    /// Prevents it from appearing again on subsequent launches.
+    /// </summary>
+    public bool HasSeenSetupSuggestion { get; set; } = false;
+
     // === WebView ===
 
     /// <summary>Zoom factor for the slide WebView panel. 1.0 = 100%.</summary>
@@ -56,7 +62,7 @@ public class AppSettings
     // === nxm:// Protocol Handler ===
 
     /// <summary>Whether the app is currently registered as the nxm:// handler.</summary>
-    public bool   NxmHandlerEnabled  { get; set; } = false;
+    public bool   NxmHandlerEnabled  { get; set; } = true;
 
     /// <summary>
     /// Backup of the nxm:// handler command that existed before we registered.

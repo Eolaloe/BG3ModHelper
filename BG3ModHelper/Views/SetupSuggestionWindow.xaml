@@ -1,0 +1,43 @@
+<Window x:Class="BG3ModHelper.Views.SetupSuggestionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Recommended Setup"
+        Width="420"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,16">
+            The following features are recommended for the best experience.
+            You can change these at any time in Settings.
+        </TextBlock>
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,20">
+            <CheckBox x:Name="NxmCheckBox" Margin="0,0,0,10"
+                      Content="Use BG3 Mod Helper as the Mod Manager Download handler (nxm://)"/>
+            <TextBlock Foreground="#888888" FontSize="11" Margin="20,0,0,16" TextWrapping="Wrap">
+                Lets you click Mod Manager Download on Nexus directly. Non-BG3 links are forwarded to your existing handler.
+            </TextBlock>
+
+            <CheckBox x:Name="FolderWatchCheckBox"
+                      Content="Auto-install mods from download folder"/>
+            <TextBlock Foreground="#888888" FontSize="11" Margin="20,4,0,0" TextWrapping="Wrap">
+                Automatically detects and installs newly downloaded mod archives while the app is running.
+            </TextBlock>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="ApplyBtn" Content="Apply" Width="80" Height="28"
+                    Margin="0,0,8,0" IsDefault="True" Click="Apply_Click"/>
+            <Button Content="Skip" Width="80" Height="28"
+                    IsCancel="True" Click="Skip_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

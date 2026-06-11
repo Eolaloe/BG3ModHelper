@@ -88,6 +88,15 @@ public partial class App : Application
             Logger.Info("First run detected === opening Settings");
             mainWindow.OpenSettingsOnStartup();
         }
+        // Recommended setup prompt — shown once to users who have either feature disabled
+        else if (!settings.HasSeenSetupSuggestion &&
+                 (!settings.NxmHandlerEnabled || !settings.FolderWatchEnabled))
+        {
+            var vm = mainWindow.DataContext as BG3ModHelper.ViewModels.MainWindowViewModel;
+            var dialog = new BG3ModHelper.Views.SetupSuggestionWindow(settings) { Owner = mainWindow };
+            if (dialog.ShowDialog() == true)
+                vm?.RestartFolderWatcher();
+        }
 
         // Restore last mode
         if (settings.LastModeIsCompact)

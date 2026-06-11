@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings          _settings;
     private readonly MainWindowViewModel? _vm;
     private          bool                 _suppressNxmEvent;
+    private          bool                 _suppressFolderWatchEvent;
 
     // ── Konami code: ↑↑↓↓←→←→ ──────────────────────────────────────────────
     private static readonly Key[] KonamiSequence =
@@ -112,7 +113,9 @@ public partial class SettingsWindow : Window
             NexusTierBadge.Visibility = Visibility.Visible;
         }
 
+        _suppressFolderWatchEvent = true;
         FolderWatchCheckBox.IsChecked = _settings.FolderWatchEnabled;
+        _suppressFolderWatchEvent = false;
         DeleteSourceCheckBox.IsChecked = _settings.DeleteSourceAfterInstall;
         WatchFolderBox.Text = !string.IsNullOrEmpty(_settings.WatchedDownloadFolder)
             ? _settings.WatchedDownloadFolder
@@ -204,6 +207,7 @@ public partial class SettingsWindow : Window
 
     private void FolderWatch_Checked(object sender, RoutedEventArgs e)
     {
+        if (_suppressFolderWatchEvent) return;
         if (FolderWatchCheckBox.IsChecked == true)
         {
             var result = MessageBox.Show(
