@@ -1,0 +1,83 @@
+<Window x:Class="BG3ModHelper.Views.AppUpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Update Available"
+        Width="360"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="A new version of BG3 Mod Helper is available."
+                   TextWrapping="Wrap"/>
+
+        <!-- Version table -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="80"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="6"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="6"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Current -->
+            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="pack://application:,,,/Assets/app.ico" Width="16" Height="16" Margin="0,0,5,0"/>
+                <TextBlock Text="Current" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="CurrentVersionText" FontSize="13" FontWeight="SemiBold"/>
+
+            <!-- GitHub -->
+            <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="pack://application:,,,/Assets/GitHub.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                <TextBlock Text="GitHub" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="GitHubVersionText" FontSize="13" FontWeight="SemiBold"/>
+                <TextBlock x:Name="GitHubDateText" Foreground="#888888" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Grid.Row="2" Grid.Column="2" x:Name="GitHubNewBadge"
+                       Text="NEW" Foreground="#4CAF50" FontSize="10" FontWeight="Bold"
+                       Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+
+            <!-- Nexus -->
+            <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                        x:Name="NexusLabel" Visibility="Collapsed">
+                <Image Source="pack://application:,,,/Assets/nexus.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                <TextBlock Text="Nexus" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                        x:Name="NexusVersionPanel" Visibility="Collapsed">
+                <TextBlock x:Name="NexusVersionText" FontSize="13" FontWeight="SemiBold"/>
+                <TextBlock x:Name="NexusDateText" Foreground="#888888" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Grid.Row="4" Grid.Column="2" x:Name="NexusNewBadge"
+                       Text="NEW" Foreground="#4CAF50" FontSize="10" FontWeight="Bold"
+                       Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+        </Grid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="NexusBtn" Content="Nexus Page" Width="90" Height="28"
+                    Margin="0,0,8,0" Click="NexusBtn_Click" Visibility="Collapsed"/>
+            <Button Content="GitHub Releases" Width="110" Height="28"
+                    Margin="0,0,8,0" Click="GitHubBtn_Click"/>
+            <Button Content="Later" Width="60" Height="28"
+                    IsCancel="True" Click="LaterBtn_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

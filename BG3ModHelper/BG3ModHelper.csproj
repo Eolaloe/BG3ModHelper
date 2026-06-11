@@ -55,6 +55,8 @@
 	<ItemGroup>
 		<Resource Include="Assets\mod_download_button.png"/>
 		<Resource Include="Assets\GitHub.png"/>
+		<Resource Include="Assets\BG3MH_icon.png"/>
+		<Resource Include="Assets\app.ico"/>
 		<Resource Include="Assets\eola.png"/>
 		<Resource Include="Assets\nexus.png"/>
 		<Resource Include="Assets\nexus_grey.png"/>

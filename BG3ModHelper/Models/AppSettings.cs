@@ -13,6 +13,9 @@ public class AppSettings
     /// <summary>Last update check time — persisted so it survives app restarts.</summary>
     public DateTime? LastCheck { get; set; } = null;
 
+    /// <summary>Last time GitHub was queried for a new app release.</summary>
+    public DateTime? LastGitHubUpdateCheck { get; set; } = null;
+
     // === Folder Watcher ===
 
     /// <summary>Whether download folder auto-install watching is enabled.</summary>

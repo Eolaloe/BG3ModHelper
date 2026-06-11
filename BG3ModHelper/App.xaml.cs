@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.IO.Pipes;
 using System.Windows;
+using BG3ModHelper.Models;
 using BG3ModHelper.Services;
 using BG3ModHelper.Views;
 using Newtonsoft.Json;
@@ -106,9 +107,33 @@ public partial class App : Application
                 .EnterCompactCommand.Execute(null);
         }
 
+        // Check GitHub for a new app release (at most once per 24h, background)
+        _ = CheckForAppUpdateAsync(settings);
+
         // First-instance args may contain nxm URL (clicked nxm:// while app not running)
         if (e.Args.Length > 0)
             HandleIncomingArgs(e.Args);
+    }
+
+    private async Task CheckForAppUpdateAsync(AppSettings settings)
+    {
+        if (!GitHubUpdateChecker.ShouldCheck(settings)) return;
+
+        var info = await GitHubUpdateChecker.CheckForUpdateAsync(settings);
+
+        settings.LastGitHubUpdateCheck = DateTime.UtcNow;
+        SettingsStore.Save(settings);
+
+        if (!info.HasUpdate) return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            var win = new BG3ModHelper.Views.AppUpdateWindow(info)
+            {
+                Owner = Application.Current.MainWindow
+            };
+            win.ShowDialog();
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)
