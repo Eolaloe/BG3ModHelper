@@ -60,6 +60,26 @@ public class NexusIdDatabase
         await SyncFromGitHubAsync();
     }
 
+    /// <summary>
+    /// Loads the DB from the local disk cache only — no network request.
+    /// Returns false if no cache file exists.
+    /// Intended for lightweight consumers like the Mod Troubleshooter.
+    /// </summary>
+    public bool LoadFromDisk()
+    {
+        if (!File.Exists(DbCachePath)) return false;
+        try
+        {
+            BuildIndex(File.ReadAllText(DbCachePath));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusIdDatabase.LoadFromDisk: {ex.Message}");
+            return false;
+        }
+    }
+
     // === Lookup ===
 
     /// <summary>
@@ -169,6 +189,52 @@ public class NexusIdDatabase
         if (filtered.Count == 0) return null;
         var firstId = filtered[0].NexusModId;
         return filtered.All(e => e.NexusModId == firstId) ? firstId : null;
+    }
+
+    // === Search (mod troubleshooting) ===
+
+    /// <summary>
+    /// Returns up to <paramref name="limit"/> mods whose name or pak filename
+    /// partially matches <paramref name="query"/> (case-insensitive).
+    /// Strips a trailing .pak suffix before matching pak filenames.
+    /// </summary>
+    public IReadOnlyList<ModSearchResult> SearchMods(string query, int limit = 50)
+    {
+        var q      = query.ToLowerInvariant().Trim();
+        if (string.IsNullOrEmpty(q)) return [];
+        var qNoPak = q.EndsWith(".pak") ? q[..^4] : q;
+
+        return _pakIndex.Values
+            .SelectMany(e => e)
+            .GroupBy(e => e.NexusModId)
+            .Where(g => g.First().NexusModName.ToLowerInvariant().Contains(q) ||
+                        g.Any(e => e.PakFileName.ToLowerInvariant().Contains(qNoPak)))
+            .Select(g => new ModSearchResult(
+                g.Key,
+                g.First().NexusModName,
+                g.First().NexusUploadedBy,
+                g.Select(e => e.PakFileName).Distinct().ToList()))
+            .OrderBy(r => r.ModName)
+            .Take(limit)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Returns mod info by exact Nexus mod ID.
+    /// Returns null if the mod is not present in the local DB cache.
+    /// </summary>
+    public ModSearchResult? GetModById(int modId)
+    {
+        var entries = _pakIndex.Values
+            .SelectMany(e => e)
+            .Where(e => e.NexusModId == modId)
+            .ToList();
+        if (entries.Count == 0) return null;
+        return new ModSearchResult(
+            modId,
+            entries[0].NexusModName,
+            entries[0].NexusUploadedBy,
+            entries.Select(e => e.PakFileName).Distinct().ToList());
     }
 
     // === Contribute ===
@@ -381,6 +447,19 @@ public class PakLookupEntry
     public string DisplayLabel => $"[{NexusUploadedBy}] {NexusModName} / {NexusFileName}";
 }
 
+
+
+/// <summary>
+/// A mod entry returned by <see cref="NexusIdDatabase.SearchMods"/> or
+/// <see cref="NexusIdDatabase.GetModById"/>. Used by the Mod Troubleshooter.
+/// </summary>
+public record ModSearchResult(
+    int ModId, string ModName, string UploadedBy, IReadOnlyList<string> PakFileNames)
+{
+    public string DisplayLabel => string.IsNullOrEmpty(ModName)
+        ? $"Unknown Mod  (ID: {ModId})"
+        : $"{ModName}  (ID: {ModId})";
+}
 
 
 /// <summary>Single UUID contribution entry.</summary>

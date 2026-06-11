@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using BG3ModHelper.Models;
 using BG3ModHelper.Services;
 using BG3ModHelper.ViewModels;
@@ -14,11 +17,31 @@ public partial class SettingsWindow : Window
     private readonly MainWindowViewModel? _vm;
     private          bool                 _suppressNxmEvent;
 
+    // ── Konami code: ↑↑↓↓←→←→ ──────────────────────────────────────────────
+    private static readonly Key[] KonamiSequence =
+    {
+        Key.Up, Key.Up, Key.Down, Key.Down,
+        Key.Left, Key.Right, Key.Left, Key.Right
+    };
+    private int              _konamiIndex;
+    private DispatcherTimer? _rainbowTimer;
+    private int              _rainbowIdx;
+    private static readonly Color[] RainbowColors =
+    {
+        Color.FromRgb(0xff, 0x4d, 0x4d), // red
+        Color.FromRgb(0xff, 0xa0, 0x00), // orange
+        Color.FromRgb(0xff, 0xe0, 0x00), // yellow
+        Color.FromRgb(0x00, 0xcc, 0x66), // green
+        Color.FromRgb(0x00, 0x99, 0xff), // blue
+        Color.FromRgb(0xaa, 0x44, 0xff), // purple
+    };
+
     public SettingsWindow(AppSettings settings, MainWindowViewModel? vm = null)
     {
         InitializeComponent();
         _settings        = settings;
         _vm              = vm;
+        MaxHeight = SystemParameters.WorkArea.Height - 20;
         // Auto-detect current nxm handler and add to known list.
         // Never add old Helper paths — IsSelfExe guards against that.
         var currentCmd = NxmHandler.ReadCurrentCommand();
@@ -54,6 +77,10 @@ public partial class SettingsWindow : Window
         LoadToUI();
         WebViewHelper.LoginStateChanged += OnLoginStateChanged;
         Closed += (_, _) => WebViewHelper.LoginStateChanged -= OnLoginStateChanged;
+
+        // If DevMode was already activated this session, restore rainbow + clickable state
+        if (DevMode.IsActive)
+            Loaded += (_, _) => ActivateDebugMode();
     }
 
     private void OnLoginStateChanged(bool loggedIn) =>
@@ -348,6 +375,61 @@ public partial class SettingsWindow : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    // ── Konami code handler ─────────────────────────────────────────────────
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        if (e.Key == KonamiSequence[_konamiIndex])
+        {
+            _konamiIndex++;
+            if (_konamiIndex == KonamiSequence.Length)
+            {
+                _konamiIndex = 0;
+                ActivateDebugMode();
+            }
+        }
+        else
+        {
+            // Reset; if the failed key happens to be the first in sequence, count it
+            _konamiIndex = e.Key == KonamiSequence[0] ? 1 : 0;
+        }
+    }
+
+    private void ActivateDebugMode()
+    {
+        DevMode.Activate();
+
+        // Make nickname clickable — opens DevModeWindow
+        EolaloeTextBlock.Cursor = Cursors.Hand;
+
+        // Start rainbow colour cycling on the nickname label
+        if (_rainbowTimer != null) return; // already running (double-trigger guard)
+        _rainbowTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _rainbowTimer.Tick += (_, _) =>
+        {
+            _rainbowIdx = (_rainbowIdx + 1) % RainbowColors.Length;
+            EolaloeRun.Foreground = new SolidColorBrush(RainbowColors[_rainbowIdx]);
+        };
+        _rainbowTimer.Start();
+        Closed += (_, _) => _rainbowTimer.Stop();
+    }
+
+    private void OpenTroubleshooter_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new ModTroubleshootWindow { Owner = this };
+        win.ShowDialog();
+    }
+
+    private void EolaloeTextBlock_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (!DevMode.IsActive) return;
+        // Show as non-modal with no owner so it stays open after SettingsWindow closes
+        var win = new DevModeWindow();
+        win.Show();
     }
 
     // === nxm:// handler ===

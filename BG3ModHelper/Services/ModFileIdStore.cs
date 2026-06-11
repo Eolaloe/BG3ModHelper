@@ -44,6 +44,8 @@ public class ModFileIdStore
 
     // === Lookup ===
 
+    public IReadOnlyDictionary<string, FileIdEntry> GetAll() => _store;
+
     public long? GetFileId(string uuid)
     {
         if (_store.TryGetValue(uuid.ToLowerInvariant(), out var entry))
@@ -79,6 +81,31 @@ public class ModFileIdStore
         foreach (var k in orphans) _store.Remove(k);
         Save();
         Logger.Info($"ModFileIdStore: pruned {orphans.Count} orphan(s)");
+    }
+
+    /// <summary>Removes all entries and saves. Returns the number of entries deleted.</summary>
+    public int ClearAll()
+    {
+        int count = _store.Count;
+        _store.Clear();
+        if (count > 0) Save();
+        return count;
+    }
+
+    /// <summary>
+    /// Removes all entries whose mod ID matches <paramref name="nexusModId"/>.
+    /// Returns the number of entries deleted.
+    /// </summary>
+    public int RemoveByModId(int nexusModId)
+    {
+        var toRemove = _store
+            .Where(kvp => kvp.Value.NexusModId == nexusModId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        foreach (var key in toRemove)
+            _store.Remove(key);
+        if (toRemove.Count > 0) Save();
+        return toRemove.Count;
     }
 
     // === Persistence ===

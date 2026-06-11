@@ -30,6 +30,15 @@ public class NexusUserInfo
     public string Email     { get; set; } = "";
 }
 
+/// <summary>
+/// Combined result from a single files.json call.
+/// Descriptions: FileId → plain-text file description (for hover tooltips).
+/// Files: full file list including entries whose content_preview_link is broken.
+/// </summary>
+public sealed record FilesPageData(
+    IReadOnlyDictionary<long, string> Descriptions,
+    IReadOnlyList<NexusModFile>       Files);
+
 /// <summary>Result from the Nexus MD5 search endpoint.</summary>
 public sealed record NexusMd5Result(
     int    ModId,

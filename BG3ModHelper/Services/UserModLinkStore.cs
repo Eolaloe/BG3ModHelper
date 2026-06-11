@@ -159,6 +159,33 @@ public class UserModLinkStore
         Logger.Info($"UserModLinkStore: migrated key [{oldPakFileName}] → [{newPakFileName}] (pak renamed)");
     }
 
+    /// <summary>
+    /// Removes all Nexus links and saves. Returns the number of entries deleted.
+    /// </summary>
+    public int ClearAllNexusLinks()
+    {
+        int count = _nexusLinks.Count;
+        _nexusLinks.Clear();
+        if (count > 0) Save();
+        return count;
+    }
+
+    /// <summary>
+    /// Removes all Nexus links whose mod ID matches <paramref name="nexusModId"/>.
+    /// Returns the number of entries deleted.
+    /// </summary>
+    public int RemoveLinksByModId(int nexusModId)
+    {
+        var toRemove = _nexusLinks
+            .Where(kvp => kvp.Value.ModId == nexusModId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        foreach (var key in toRemove)
+            _nexusLinks.Remove(key);
+        if (toRemove.Count > 0) Save();
+        return toRemove.Count;
+    }
+
     /// <summary>Returns true if any manual link (Nexus or external) exists for this pak.</summary>
     public bool HasAnyLink(string pakFileName)
     {

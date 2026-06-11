@@ -141,9 +141,7 @@ public static class NxmInstaller
                 Logger.Warn($"NxmInstaller: pending verified store update failed — {ex.Message}");
             }
 
-            // 3) Community DB (immediate, best-effort)
-            var db = new NexusIdDatabase();
-            await db.ContributeUuidAsync(pakFileName, pak.MetaUuid, modId, fileId);
+            // Community DB contribution is handled at next update check via pending store (above)
         }
         catch (Exception ex)
         {

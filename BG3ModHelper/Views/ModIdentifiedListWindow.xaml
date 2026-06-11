@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:BG3ModHelper.ViewModels"
         Title="Identified Mods" Width="760"
-        SizeToContent="Height" MaxHeight="720"
+        SizeToContent="Height"
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner">
 
@@ -168,7 +168,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- description -->
             <RowDefinition Height="Auto"/>   <!-- column headers -->
-            <RowDefinition Height="*" MaxHeight="580"/>  <!-- list -->
+            <RowDefinition Height="*" MaxHeight="480"/>  <!-- list: ~10 rows visible, scrolls beyond -->
             <RowDefinition Height="Auto"/>   <!-- toolbar -->
         </Grid.RowDefinitions>
 

@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Text.RegularExpressions;
 using BG3ModHelper.Models;
 using Newtonsoft.Json;
 
@@ -11,6 +12,9 @@ namespace BG3ModHelper.Services;
 public class DownloadHistoryStore
 {
     private const int MaxEntries = 500;
+
+    private static readonly Regex _nexusModIdRegex =
+        new(@"/mods/(\d+)", RegexOptions.Compiled);
 
     private static readonly string FilePath =
         Path.Combine(SettingsStore.GetDataFolder(), "download_history.json");
@@ -69,6 +73,24 @@ public class DownloadHistoryStore
         _entries.Clear();
         Save();
         Logger.Info("DownloadHistoryStore: cleared all entries");
+    }
+
+    /// <summary>
+    /// Removes all entries whose Nexus mod ID (parsed from <c>HistoryPageUrl</c>)
+    /// matches <paramref name="nexusModId"/>. Returns the number of entries deleted.
+    /// </summary>
+    public int RemoveByModId(int nexusModId)
+    {
+        int removed = _entries.RemoveAll(e =>
+        {
+            if (string.IsNullOrEmpty(e.HistoryPageUrl)) return false;
+            var m = _nexusModIdRegex.Match(e.HistoryPageUrl);
+            return m.Success &&
+                   int.TryParse(m.Groups[1].Value, out var id) &&
+                   id == nexusModId;
+        });
+        if (removed > 0) Save();
+        return removed;
     }
 
     // === Helpers ===

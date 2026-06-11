@@ -192,10 +192,22 @@ public partial class UpdateNotificationWindow : Window
         _suppressZoomEvent = false;
         UpdateZoomDisplay(_settings.WebViewZoom);
 
-        // Clear pending report flag — navigation to the mod page is all we need.
-        // Auto-selection was removed; the user follows the guide in the disambiguation dialog.
+        // Step 2: mod page loaded — click the .popup-btn-ajax report button via JS.
+        // Nexus uses Magnific Popup (mfp) to load ReportPopUp as an AJAX lightbox;
+        // direct URL navigation is blocked. Clicking the element triggers the same flow.
         if (_pendingReportModId > 0 && url.Contains($"/mods/{_pendingReportModId}"))
+        {
             _pendingReportModId = 0;
+            await Task.Delay(500); // wait for Nexus JS (Magnific Popup) to initialise
+            const string clickReport = @"
+                (function() {
+                    var btn = document.querySelector('.report-abuse-btn a, a.popup-btn-ajax[href*=""ReportPopUp""]');
+                    if (btn) btn.click();
+                })();
+            ";
+            try { await NexusWebView.CoreWebView2.ExecuteScriptAsync(clickReport); }
+            catch { }
+        }
 
         const string cookieScript = @"
             (function() {
@@ -373,28 +385,95 @@ public partial class UpdateNotificationWindow : Window
 
     private void OnShowIdentifiedList()
     {
-        var win = new ModIdentifiedListWindow(_vm.IdentifiedEntries, _vm.LinkedOnlyEntries) { Owner = this };
+        var win = new ModIdentifiedListWindow(_vm.IdentifiedEntries, _vm.LinkedOnlyEntries, _vm.NexusApi) { Owner = this };
         win.Show();
     }
 
-    private void OnDisambiguationRequested(UpdateEntryViewModel entryVm, IReadOnlyList<NexusModCandidate> candidates)
+    private async void OnDisambiguationRequested(UpdateEntryViewModel entryVm, IReadOnlyList<NexusModCandidate> candidates)
     {
         var pakFileName = System.IO.Path.GetFileName(entryVm.PakFilePath);
-        var dialog = new ModDisambiguationDialog(pakFileName, candidates) { Owner = this };
+        // Fetch descriptions + full file list before opening the dialog.
+        // Descriptions become hover tooltips; extra files become unverified candidates.
+        var (descriptions, unverified) = await FetchFilesDataAsync(_vm.NexusApi, candidates);
+        var dialog = new ModDisambiguationDialog(pakFileName, candidates, descriptions, unverified) { Owner = this };
         dialog.ReportAbuseRequested += OnReportAbuseRequested;
-        dialog.Confirmed            += entryVm.ApplyDisambiguation;
+        dialog.Confirmed += candidate =>
+        {
+            entryVm.ApplyDisambiguation(candidate);
+            // If identification revealed a real update, fetch changelog in background
+            if (!string.IsNullOrEmpty(entryVm.NewVersion) && _vm.NexusApi != null)
+            {
+                _ = _vm.NexusApi.GetChangelogAsync(candidate.ModId, candidate.FileVersion)
+                    .ContinueWith(t =>
+                    {
+                        if (t.Result != null)
+                            Dispatcher.Invoke(() => entryVm.SetChangelog(t.Result));
+                    });
+            }
+        };
         dialog.Unlinked             += entryVm.ApplyUnlink;
         // Unlink only clears the persisted link record — no list manipulation needed.
         dialog.Show();   // non-modal: dialog stays on top of owner but doesn't block interaction
     }
 
+    /// <summary>
+    /// Single files.json call per unique ModId — returns hover-tooltip descriptions and
+    /// a list of unverified candidates (uploads not in the DB because content_preview failed).
+    /// </summary>
+    private static async Task<(IReadOnlyDictionary<long, string>? descriptions,
+                                IReadOnlyList<NexusModCandidate>   unverified)>
+        FetchFilesDataAsync(
+            Services.NexusApi? nexusApi,
+            IReadOnlyList<NexusModCandidate> candidates)
+    {
+        if (nexusApi == null) return (null, []);
+
+        var descriptions = new Dictionary<long, string>();
+        var unverified   = new List<NexusModCandidate>();
+        var existingIds  = candidates.Select(c => c.FileId).ToHashSet();
+
+        // ModId → (ModName, Author) borrowed from existing verified candidates
+        var modInfo = candidates
+            .GroupBy(c => c.ModId)
+            .ToDictionary(g => g.Key, g => (g.First().ModName, g.First().Author));
+
+        foreach (var modId in candidates.Select(c => c.ModId).Distinct())
+        {
+            var data = await nexusApi.GetFilesPageAsync(modId);
+            if (data == null) continue;
+
+            foreach (var (k, v) in data.Descriptions)
+                descriptions[k] = v;
+
+            if (!modInfo.TryGetValue(modId, out var info)) continue;
+            foreach (var file in data.Files)
+            {
+                if (existingIds.Contains(file.NexusFileId)) continue;
+                // Skip archived files (no longer downloadable) and old versions (superseded by newer uploads)
+                if (file.NexusFileCategoryName.Equals("ARCHIVED",    StringComparison.OrdinalIgnoreCase)) continue;
+                if (file.NexusFileCategoryName.Equals("OLD_VERSION", StringComparison.OrdinalIgnoreCase)) continue;
+                unverified.Add(new Models.NexusModCandidate(
+                    ModId:       modId,
+                    ModName:     info.ModName,
+                    Author:      info.Author,
+                    FileId:      file.NexusFileId,
+                    FileName:    file.NexusFileName,
+                    FileVersion: file.NexusFileVersion));
+            }
+        }
+
+        return (descriptions.Count > 0 ? descriptions : null, unverified);
+    }
+
     private void OnReportAbuseRequested(int modId)
     {
         _pendingReportModId = modId;
+
+        // Step 1: navigate to the mod page to establish session context.
+        // Step 2 (report popup) fires from OnWebViewNavigationCompleted once this load completes.
         var modPageUrl = $"https://www.nexusmods.com/baldursgate3/mods/{modId}";
 
         // Go through the ViewModel so IsWebViewPanelOpen stays in sync with the close button.
-        // Calling OpenWebViewPanel() directly left the flag false → close button had nothing to toggle.
         if (!_vm.IsWebViewPanelOpen)
             _vm.RequestOpenWebViewPanel();
 

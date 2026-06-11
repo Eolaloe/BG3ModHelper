@@ -529,6 +529,12 @@ public partial class UpdateEntryViewModel : ViewModelBase
         OnPropertyChanged(nameof(NewVersionDisplay));
     }
 
+    public void SetChangelog(string changelog)
+    {
+        _entry.Changelog = changelog;
+        OnPropertyChanged(nameof(Changelog));
+    }
+
     // === Unlink ===
 
     /// <summary>

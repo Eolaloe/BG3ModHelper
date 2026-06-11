@@ -431,6 +431,11 @@ public class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Reset API call tracker and files.json cache so stats and data
+        // reflect only this check session (new uploads become visible).
+        Services.ApiCallTracker.BeginSession();
+        Services.NexusApi.ClearFilesPageCache();
+
         var hasNexus = !string.IsNullOrWhiteSpace(_settings.NexusAPIKey);
         var hasModio = !string.IsNullOrWhiteSpace(_settings.ModioAPIKey);
 
@@ -587,13 +592,17 @@ public class MainWindowViewModel : ViewModelBase
 
             // Fetch changelogs in background — window is already open.
             // Tooltips re-evaluate on each hover, so values will appear once they arrive.
-            if (nexusApi != null)
+            // Skipped when DevMode.SkipChangelog is on (saves ~1 API call per update entry).
+            if (nexusApi != null && !DevMode.SkipChangelog)
             {
                 _ = Task.WhenAll(updates
                     .Where(u => u.NexusModId.HasValue &&
-                                u.AvailableSources.Contains(UpdateSource.NEXUSMODS))
-                    .Select(u => nexusApi.GetChangelogAsync(u.NexusModId!.Value, u.NexusFileVersion)
-                        .ContinueWith(t => { if (t.Result != null) u.Changelog = t.Result; })));
+                                u.AvailableSources.Contains(UpdateSource.NEXUSMODS) &&
+                                !u.IsSyncRequired &&
+                                !u.IsAmbiguous)
+                    .GroupBy(u => u.NexusModId!.Value)
+                    .Select(g => nexusApi.GetChangelogAsync(g.Key, g.First().NexusFileVersion)
+                        .ContinueWith(t => { if (t.Result != null) foreach (var u in g) u.Changelog = t.Result; })));
             }
         }
         catch (Exception ex)

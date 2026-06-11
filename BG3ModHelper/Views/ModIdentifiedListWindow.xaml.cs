@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using BG3ModHelper.Models;
+using BG3ModHelper.Services;
 using BG3ModHelper.ViewModels;
 
 namespace BG3ModHelper.Views;
@@ -9,12 +12,16 @@ namespace BG3ModHelper.Views;
 public partial class ModIdentifiedListWindow : Window
 {
     private readonly ObservableCollection<IdentifiedLinkEntryViewModel> _linkedOnly;
+    private readonly NexusApi? _nexusApi;
 
     public ModIdentifiedListWindow(
         IReadOnlyList<UpdateEntryViewModel>        updateListEntries,
-        IReadOnlyList<IdentifiedLinkEntryViewModel> linkedOnlyEntries)
+        IReadOnlyList<IdentifiedLinkEntryViewModel> linkedOnlyEntries,
+        NexusApi? nexusApi = null)
     {
         InitializeComponent();
+
+        _nexusApi = nexusApi;
 
         UpdateListEntries.ItemsSource = updateListEntries;
 
@@ -27,19 +34,64 @@ public partial class ModIdentifiedListWindow : Window
 
         RefreshVisibility(updateListEntries.Count);
 
-        Loaded      += (_, _) => SyncHeaderPadding();
+        // Clamp to work area so the window never extends off-screen on any resolution.
+        Loaded      += (_, _) => { MaxHeight = SystemParameters.WorkArea.Height - 40; SyncHeaderPadding(); };
         SizeChanged += (_, _) => SyncHeaderPadding();
     }
 
-    private void OnLinkedEntryChangeRequested(
+    private async void OnLinkedEntryChangeRequested(
         IdentifiedLinkEntryViewModel entry,
         IReadOnlyList<NexusModCandidate> candidates)
     {
-        var dialog = new ModDisambiguationDialog(entry.PakFileName + ".pak", candidates) { Owner = this };
+        var (descriptions, unverified) = await FetchFilesDataAsync(_nexusApi, candidates);
+        var dialog = new ModDisambiguationDialog(entry.PakFileName + ".pak", candidates, descriptions, unverified) { Owner = this };
         dialog.Confirmed += chosen => entry.ApplyChange(chosen);
         dialog.Unlinked  += entry.ApplyUnlink;
         entry.RemoveFromListRequested += vm => _linkedOnly.Remove(vm);
         dialog.Show();
+    }
+
+    private static async Task<(IReadOnlyDictionary<long, string>? descriptions,
+                                IReadOnlyList<NexusModCandidate>   unverified)>
+        FetchFilesDataAsync(
+            NexusApi? nexusApi,
+            IReadOnlyList<NexusModCandidate> candidates)
+    {
+        if (nexusApi == null) return (null, []);
+
+        var descriptions = new Dictionary<long, string>();
+        var unverified   = new List<NexusModCandidate>();
+        var existingIds  = candidates.Select(c => c.FileId).ToHashSet();
+        var modInfo = candidates
+            .GroupBy(c => c.ModId)
+            .ToDictionary(g => g.Key, g => (g.First().ModName, g.First().Author));
+
+        foreach (var modId in candidates.Select(c => c.ModId).Distinct())
+        {
+            var data = await nexusApi.GetFilesPageAsync(modId);
+            if (data == null) continue;
+
+            foreach (var (k, v) in data.Descriptions)
+                descriptions[k] = v;
+
+            if (!modInfo.TryGetValue(modId, out var info)) continue;
+            foreach (var file in data.Files)
+            {
+                if (existingIds.Contains(file.NexusFileId)) continue;
+                // Skip archived files (no longer downloadable) and old versions (superseded by newer uploads)
+                if (file.NexusFileCategoryName.Equals("ARCHIVED",    StringComparison.OrdinalIgnoreCase)) continue;
+                if (file.NexusFileCategoryName.Equals("OLD_VERSION", StringComparison.OrdinalIgnoreCase)) continue;
+                unverified.Add(new Models.NexusModCandidate(
+                    ModId:       modId,
+                    ModName:     info.ModName,
+                    Author:      info.Author,
+                    FileId:      file.NexusFileId,
+                    FileName:    file.NexusFileName,
+                    FileVersion: file.NexusFileVersion));
+            }
+        }
+
+        return (descriptions.Count > 0 ? descriptions : null, unverified);
     }
 
     private void RefreshVisibility(int updateCount)

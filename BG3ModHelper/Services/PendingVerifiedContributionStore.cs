@@ -53,14 +53,14 @@ public class PendingVerifiedContributionStore
     /// </summary>
     public void Add(string pakFileName, string metaUuid, int nexusModId, long nexusFileId)
     {
-        if (string.IsNullOrEmpty(pakFileName) || string.IsNullOrEmpty(metaUuid)) return;
+        if (string.IsNullOrEmpty(metaUuid)) return;
         if (nexusModId == 0 || nexusFileId == 0) return;
 
-        var pak = pakFileName.ToLowerInvariant();
+        var pak = pakFileName?.ToLowerInvariant() ?? "";
 
-        // Deduplicate: same pak + modId + fileId already queued
+        // Deduplicate: same uuid + modId + fileId already queued
         bool exists = _queue.Any(e =>
-            string.Equals(e.PakFileName, pak, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.MetaUuid, metaUuid, StringComparison.OrdinalIgnoreCase) &&
             e.NexusModId == nexusModId &&
             e.NexusFileId == nexusFileId);
 
@@ -68,7 +68,7 @@ public class PendingVerifiedContributionStore
 
         _queue.Add(new PendingVerifiedEntry(pak, metaUuid.ToLowerInvariant(), nexusModId, nexusFileId));
         Save();
-        Logger.Info($"PendingVerifiedContributionStore: queued {pakFileName} → uuid={metaUuid} modId={nexusModId} fileId={nexusFileId}");
+        Logger.Info($"PendingVerifiedContributionStore: queued {(string.IsNullOrEmpty(pak) ? "(no pakFileName)" : pak)} → uuid={metaUuid} modId={nexusModId} fileId={nexusFileId}");
     }
 
     // === Read ===

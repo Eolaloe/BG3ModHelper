@@ -442,6 +442,14 @@ public static class UpdateChecker
         // Verified entries are cleared only after a confirmed successful send.
         var verifiedStore = new PendingVerifiedContributionStore();
         verifiedStore.Load();
+
+        // One-time: queue historical UUID contributions from mod_fileids.json
+        if (!HasQueuedHistoricalFileIdContributions())
+        {
+            QueueHistoricalFileIdContributions(nexusDb, verifiedStore);
+            MarkHistoricalFileIdContributionsQueued();
+        }
+
         var pendingVerified = verifiedStore.GetAll();
 
         foreach (var v in pendingVerified)
@@ -474,6 +482,56 @@ public static class UpdateChecker
         bool ok = await db.ContributeBatchAsync(entries);
         if (ok && verifiedCount > 0)
             verifiedStore.Clear();
+    }
+
+    // === Historical file ID contribution (one-time) ===
+
+    private static readonly string _historicalFlagPath =
+        Path.Combine(SettingsStore.GetDataFolder(), "fileids_contributed.flag");
+
+    private static bool HasQueuedHistoricalFileIdContributions() =>
+        File.Exists(_historicalFlagPath);
+
+    private static void MarkHistoricalFileIdContributionsQueued() =>
+        File.WriteAllText(_historicalFlagPath, "1");
+
+    /// <summary>
+    /// One-time: reads mod_fileids.json and queues all entries as verified contributions.
+    /// pakFileName is resolved from NexusIdDatabase by modId+fileId; empty string if not found.
+    /// </summary>
+    private static void QueueHistoricalFileIdContributions(
+        NexusIdDatabase? nexusDb, PendingVerifiedContributionStore verifiedStore)
+    {
+        try
+        {
+            var fileIdStore = new ModFileIdStore();
+            fileIdStore.Load();
+            var all = fileIdStore.GetAll();
+            if (all.Count == 0) return;
+
+            int queued = 0;
+            foreach (var (uuid, entry) in all)
+            {
+                // Resolve pakFileName from DB by modId + fileId
+                var pakFileName = "";
+                if (nexusDb != null)
+                {
+                    var match = nexusDb.LookupByModId(entry.NexusModId)
+                        .FirstOrDefault(e => e.NexusFileId == entry.NexusFileId);
+                    if (match != null)
+                        pakFileName = match.PakFileName;
+                }
+
+                verifiedStore.Add(pakFileName, uuid, entry.NexusModId, entry.NexusFileId);
+                queued++;
+            }
+
+            Logger.Info($"UpdateChecker: queued {queued} historical UUID contribution(s) from mod_fileids");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"UpdateChecker: historical contribution queue failed — {ex.Message}");
+        }
     }
 
     /// <summary>Logs exceptions from a fire-and-forget task.</summary>

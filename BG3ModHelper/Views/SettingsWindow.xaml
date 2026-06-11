@@ -265,6 +265,19 @@
                     </StackPanel>
                 </GroupBox>
 
+                <!-- Mod Troubleshooting -->
+                <GroupBox Header="Mod Troubleshooting" Margin="0,0,0,12">
+                    <Grid Margin="8">
+                        <TextBlock TextWrapping="Wrap" Foreground="#888888" FontSize="11"
+                                   Margin="0,0,90,0">
+                            If a mod's update detection or identification is stuck or incorrect, clear its local tracking records to reset it. Only the selected mod is affected — .pak files are not touched.
+                        </TextBlock>
+                        <Button HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Content="Open..." Style="{StaticResource SettingsActionButton}"
+                                Click="OpenTroubleshooter_Click"/>
+                    </Grid>
+                </GroupBox>
+
                 <!-- About -->
                 <GroupBox Header="About BG3 Mod Helper">
                     <StackPanel Margin="8">
@@ -280,8 +293,9 @@
                                    Width="16" Height="16" Margin="0,0,4,0"
                                    VerticalAlignment="Center"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
-                            <TextBlock VerticalAlignment="Center">
-                                <Run Text="Eolaloe  —"/>
+                            <TextBlock x:Name="EolaloeTextBlock" VerticalAlignment="Center"
+                                       MouseLeftButtonUp="EolaloeTextBlock_Click">
+                                <Run x:Name="EolaloeRun" Text="Eolaloe"/><Run Text="  —"/>
                             </TextBlock>
                             <Image Source="pack://application:,,,/Assets/GitHub.png"
                                    Width="16" Height="16" Margin="6,0,4,0"

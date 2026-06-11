@@ -1,0 +1,110 @@
+<Window x:Class="BG3ModHelper.Views.DevModeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dev Mode" Width="360" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen">
+
+    <StackPanel Margin="16">
+
+        <!-- Header -->
+        <TextBlock Text="🛠  Dev Mode"
+                   FontSize="13" FontWeight="SemiBold" Foreground="#222"
+                   Margin="0,0,0,2"/>
+        <TextBlock Text="Session only — resets on app restart."
+                   FontSize="11" Foreground="#888" Margin="0,0,0,12"/>
+
+        <Separator Margin="0,0,0,12"/>
+
+        <!-- API Call Tracker -->
+        <Grid Margin="0,0,0,8">
+            <TextBlock Text="API Call Tracker" FontSize="11" FontWeight="SemiBold"
+                       Foreground="#555" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="RefreshStatsBtn" Content="↺ Refresh"
+                        FontSize="10" Padding="6,2" Margin="0,0,4,0"
+                        Click="RefreshStats_Click"/>
+                <Button x:Name="ResetStatsBtn" Content="Reset"
+                        FontSize="10" Padding="6,2"
+                        Click="ResetStats_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Rate limit delta -->
+        <Border Background="#f5f5f5" BorderBrush="#ddd" BorderThickness="1"
+                CornerRadius="3" Padding="8,6" Margin="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Total calls" FontSize="10" Foreground="#888"/>
+                    <TextBlock x:Name="TotalCallsText" FontSize="14" FontWeight="SemiBold" Foreground="#222"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Hourly used" FontSize="10" Foreground="#888"/>
+                    <TextBlock x:Name="HourlyUsedText" FontSize="14" FontWeight="SemiBold" Foreground="#d97706"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Daily used" FontSize="10" Foreground="#888"/>
+                    <TextBlock x:Name="DailyUsedText" FontSize="14" FontWeight="SemiBold" Foreground="#d97706"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Remaining -->
+        <Border Background="#f0fdf4" BorderBrush="#bbf7d0" BorderThickness="1"
+                CornerRadius="3" Padding="8,6" Margin="0,0,0,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Hourly remaining" FontSize="10" Foreground="#555"/>
+                    <TextBlock x:Name="HourlyRemText" FontSize="13" FontWeight="SemiBold" Foreground="#166534"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Daily remaining" FontSize="10" Foreground="#555"/>
+                    <TextBlock x:Name="DailyRemText" FontSize="13" FontWeight="SemiBold" Foreground="#166534"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Per-category breakdown -->
+        <Border x:Name="StatsBorder"
+                BorderBrush="#e0e0e0" BorderThickness="1"
+                CornerRadius="3" Margin="0,0,0,4">
+            <StackPanel x:Name="StatsPanel" Margin="0"/>
+        </Border>
+
+        <TextBlock x:Name="NoStatsText" Text="No calls recorded yet — run an update check first."
+                   FontSize="11" Foreground="#aaa" Margin="0,0,0,4"
+                   TextWrapping="Wrap" Visibility="Collapsed"/>
+
+        <Separator Margin="0,8,0,12"/>
+
+        <!-- Update Check flags -->
+        <TextBlock Text="Update Check" FontSize="11" FontWeight="SemiBold"
+                   Foreground="#555" Margin="0,0,0,6"/>
+
+        <CheckBox x:Name="SkipChangelogCheck"
+                  Margin="0,0,0,4"
+                  Checked="SkipChangelogCheck_Changed"
+                  Unchecked="SkipChangelogCheck_Changed">
+            <StackPanel>
+                <TextBlock Text="Skip changelog API calls" FontSize="12"/>
+                <TextBlock Text="Skips changelogs.json per-mod calls. Saves ~1 call per update entry."
+                           FontSize="10" Foreground="#888" TextWrapping="Wrap"/>
+            </StackPanel>
+        </CheckBox>
+
+        <Separator Margin="0,12,0,8"/>
+
+        <Button Content="Close" Width="80" HorizontalAlignment="Right"
+                Padding="0,5" Click="Close_Click"/>
+
+    </StackPanel>
+</Window>

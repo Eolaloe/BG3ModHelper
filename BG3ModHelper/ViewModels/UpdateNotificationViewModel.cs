@@ -15,6 +15,9 @@ public class UpdateNotificationViewModel : ViewModelBase
     private readonly ModioApi? _modioApi;
     private readonly NexusApi? _nexusApi;
     private readonly ModFileIdStore? _fileIdStore;
+
+    /// <summary>Exposed so views can pass it to dialogs that need ad-hoc API calls (e.g. disambiguation tooltip fetch).</summary>
+    public NexusApi? NexusApi => _nexusApi;
     private readonly DownloadHistoryStore? _historyStore;
     private readonly UserModLinkStore?    _userLinkStore;
     private readonly NexusIdDatabase?    _nexusDb;

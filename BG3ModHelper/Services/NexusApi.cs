@@ -29,6 +29,22 @@ public class NexusApi(string apiKey)
     public int HourlyRemaining { get; private set; } = 100;
     public int DailyRemaining  { get; private set; } = 2500;
 
+    // Update-check-scoped files.json cache — shared across all NexusApi instances.
+    // Keyed by modId. Cleared at the start of each update check so newly uploaded
+    // files are always picked up on the next check.
+    private static readonly Dictionary<int, FilesPageData> _filesPageCache = new();
+    private static readonly object _filesPageCacheLock = new();
+
+    /// <summary>
+    /// Clears the files.json cache. Call at the start of each update check
+    /// so stale entries don't survive across separate checks.
+    /// </summary>
+    public static void ClearFilesPageCache()
+    {
+        lock (_filesPageCacheLock) _filesPageCache.Clear();
+        Logger.Debug("NexusApi: files.json cache cleared");
+    }
+
     /// <summary>
     /// Fired (on any thread) whenever rate limit counters are updated from response headers.
     /// Args: (hourlyRemaining, dailyRemaining).
@@ -89,6 +105,69 @@ public class NexusApi(string apiKey)
         }
     }
 
+
+    /// <summary>
+    /// Returns descriptions and the full file list for a mod in a single files.json call.
+    /// Descriptions: FileId → plain-text description (for hover tooltips).
+    /// Files: every upload entry, including those whose content_preview_link is broken —
+    ///        used to surface unverified candidates in the disambiguation dialog.
+    /// Returns null on failure.
+    /// </summary>
+    public async Task<FilesPageData?> GetFilesPageAsync(int modId)
+    {
+        // Return cached result if available — files.json data doesn't change within a session.
+        lock (_filesPageCacheLock)
+        {
+            if (_filesPageCache.TryGetValue(modId, out var cached))
+            {
+                Logger.Debug($"NexusApi.GetFilesPageAsync({modId}) — cache hit");
+                return cached;
+            }
+        }
+
+        var json = await GetAsync(
+            $"/v1/games/{Constants.NEXUS_GAME_DOMAIN}/mods/{modId}/files.json");
+        if (json == null) return null;
+
+        try
+        {
+            var obj = JObject.Parse(json);
+            if (obj["files"] is not JArray files) return null;
+
+            var descriptions = new Dictionary<long, string>();
+            var fileList     = new List<NexusModFile>();
+
+            foreach (var f in files)
+            {
+                var fileId = f["file_id"]?.Value<long>() ?? 0;
+                if (fileId == 0) continue;
+
+                var desc = f["description"]?.Value<string>() ?? "";
+                if (!string.IsNullOrWhiteSpace(desc))
+                    descriptions[fileId] = StripHtml(desc);
+
+                fileList.Add(new NexusModFile
+                {
+                    NexusFileId           = fileId,
+                    NexusFileName         = f["name"]?.Value<string>()             ?? "",
+                    NexusFileVersion      = f["version"]?.Value<string>()          ?? "",
+                    NexusFileCategoryName = f["category_name"]?.Value<string>()    ?? "",
+                    UploadedAt            = DateTimeOffset
+                        .FromUnixTimeSeconds(f["uploaded_timestamp"]?.Value<long>() ?? 0)
+                        .UtcDateTime
+                });
+            }
+
+            var result = new FilesPageData(descriptions, fileList);
+            lock (_filesPageCacheLock) _filesPageCache[modId] = result;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"NexusApi.GetFilesPageAsync({modId}) parse error: {ex.Message}");
+            return null;
+        }
+    }
 
     /// <summary>
     /// Returns the latest MAIN file for a mod.
@@ -389,6 +468,8 @@ public class NexusApi(string apiKey)
     /// </summary>
     private async Task<string?> GetAsync(string path)
     {
+        ApiCallTracker.Record(ApiCallTracker.CategorizeCall(path));
+
         if (!CanMakeRequest())
         {
             Logger.Warn("NexusApi: rate limit reached — skipping request");
